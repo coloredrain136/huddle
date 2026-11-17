@@ -29,7 +29,7 @@
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%}
-html{background:linear-gradient(170deg,var(--bg-1),var(--bg-2));background-attachment:fixed}
+html{background-color:#FBF5EC;background:linear-gradient(170deg,var(--bg-1),var(--bg-2));background-attachment:fixed}
 body{font-family:var(--font);color:var(--ink);font-size:17px;line-height:1.35;-webkit-font-smoothing:antialiased;overflow-x:hidden;-webkit-text-size-adjust:100%}
 .standalone{--top-extra:26px}
 button,input,textarea,select{font:inherit;color:inherit}
@@ -80,13 +80,26 @@ main{padding-bottom:calc(env(safe-area-inset-bottom) + 120px + var(--gap))}
 /* Event cards */
 .cards{display:grid;gap:16px}
 @media (min-width:600px){.cards{grid-template-columns:1fr 1fr}}
-.card{overflow:hidden;text-align:left;display:block;width:100%;padding:0;transition:transform .25s var(--spring),box-shadow .25s}
+@media (min-width:860px){
+  .wrap{max-width:1180px;padding:0 28px}
+  .cards{grid-template-columns:repeat(3,1fr);gap:20px}
+  .card .art{height:clamp(130px,24vh,190px)}
+  .evgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:22px;align-items:start}
+  .evgrid .hero{position:sticky;top:calc(env(safe-area-inset-top) + 80px + var(--top-extra));margin-top:6px}
+  .evgrid .tabs{margin-top:6px}
+  .composer .wrap{max-width:1180px}
+  .fab{right:max(28px,calc((100vw - 1180px)/2 + 28px))}
+}
+@media (min-width:1200px){.cards{grid-template-columns:repeat(4,1fr)}}
+.card{overflow:hidden;text-align:left;display:flex;flex-direction:column;justify-content:flex-start;align-items:stretch;width:100%;padding:0;transition:transform .25s var(--spring),box-shadow .25s}
 .card:active{transform:scale(.98)}
 .card .art{height:clamp(120px,22vh,170px)}
-.card .body{padding:14px 16px 16px}
+.card .body{padding:14px 16px 16px;flex:1;display:flex;flex-direction:column}
+.card .body .row{margin-top:auto;padding-top:12px}
 .card h3{font-size:21px;line-height:1.2}
 .card .when{margin-top:4px;font-size:16px;color:var(--ink-2);font-weight:600}
-.card .row{display:flex;align-items:center;justify-content:space-between;margin-top:12px;gap:10px}
+.card .row{display:flex;align-items:center;justify-content:space-between;margin-top:12px;gap:10px;flex-wrap:wrap;row-gap:8px}
+.stack .more{white-space:nowrap}
 .stagger>*{animation:cardIn .5s var(--spring) both}
 .stagger>*:nth-child(2){animation-delay:.05s}.stagger>*:nth-child(3){animation-delay:.1s}.stagger>*:nth-child(4){animation-delay:.15s}.stagger>*:nth-child(n+5){animation-delay:.2s}
 @keyframes cardIn{from{opacity:0;transform:translateY(18px) scale(.98)}to{opacity:1;transform:none}}
@@ -340,7 +353,7 @@ input[type=date].input,input[type=time].input{display:flex;align-items:center}
 <div id="app"></div>
 <script>
 'use strict';
-const APP_VERSION = 'huddle-2';
+const APP_VERSION = 'huddle-3';
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -680,7 +693,7 @@ function answerChip(ev) {
   if (!r) return '<span class="chip ask">Answer</span>';
   return { going: '<span class="chip going">✓ Going</span>', cant: '<span class="chip cant">Can’t Make It</span>', maybe: '<span class="chip maybe">Not Sure</span>' }[r.answer];
 }
-function goingStack(ev, max = 5) {
+function goingStack(ev, max = 4) {
   const ids = Object.keys(ev.rsvps).filter((k) => ev.rsvps[k].answer === 'going');
   if (!ids.length) return '<span class="faint" style="font-size:15px;font-weight:650">No one yet</span>';
   return `<div class="stack">${ids.slice(0, max).map((id) => av(id)).join('')}${ids.length > max ? `<span class="more">+${ids.length - max}</span>` : ''}<span class="more">${ids.length} Going</span></div>`;
@@ -716,7 +729,7 @@ function renderEvent(app, id) {
   const manage = S.admin || ev.creator_id === S.me.id;
   const unread = Math.max(0, ev.last_msg_id - Number(LS.get('huddle_seen_' + ev.id) || 0));
   app.innerHTML = header(`<button class="iconbtn" aria-label="Back" onclick="go('#/')">${I.back}</button><div class="spacer"></div>${manage ? `<button class="iconbtn glass" aria-label="More" id="evMore">${I.more}</button>` : ''}`) +
-  `<main class="wrap view">
+  `<main class="wrap view evgrid">
     <div class="hero glass">${artHTML(artOf(ev), ev.state === 'locked' && !isPast(ev) ? `<span class="chip soft count">${countdown(ev.final_date)}</span>` : '')}
       <div class="body"><h1>${esc(ev.title)}</h1>
         <div class="meta">
@@ -724,15 +737,18 @@ function renderEvent(app, id) {
           ${ev.location ? `<div>${I.pin}<a class="link" href="https://maps.apple.com/?q=${encodeURIComponent(ev.location)}" target="_blank" rel="noopener">${esc(ev.location)}</a></div>` : ''}
           <div>${I.user}<span>Started by ${isMe(ev.creator_id) ? 'You' : esc(nameOf(ev.creator_id))}</span></div>
         </div>
+        ${ev.state === 'locked' && invited(ev) ? `<button class="btn ghost block" id="addCal" style="margin-top:14px;min-height:50px;font-size:16px">${I.cal} Add to My Calendar</button>` : ''}
         ${ev.notes ? `<div class="notes">${esc(ev.notes)}</div>` : ''}
       </div></div>
-    <div class="tabs glass"><button data-tab="details" class="${S.tab === 'details' ? 'on' : ''}">Details</button><button data-tab="chat" class="${S.tab === 'chat' ? 'on' : ''}">Chat${unread && S.tab !== 'chat' ? `<span class="badge">${unread}</span>` : ''}</button></div>
-    <div id="tabBody"></div>
+    <div class="evright"><div class="tabs glass"><button data-tab="details" class="${S.tab === 'details' ? 'on' : ''}">Details</button><button data-tab="chat" class="${S.tab === 'chat' ? 'on' : ''}">Chat${unread && S.tab !== 'chat' ? `<span class="badge">${unread}</span>` : ''}</button></div>
+    <div id="tabBody"></div></div>
   </main>`;
   $$('.tabs button').forEach((b) => (b.onclick = () => { S.tab = b.dataset.tab; renderEvent(app, id); }));
   if (manage) $('#evMore').onclick = () => eventMenu(ev);
+  const ac = $('#addCal'); if (ac) ac.onclick = calendarSheet;
   if (S.tab === 'chat') renderChat(ev); else renderDetails(ev);
 }
+const ANSWER_LABEL = { going: 'Going', cant: 'Can’t Make It', maybe: 'Not Sure' };
 function ansButtons(cur, attr) {
   const B = [['going', '✓', 'Going'], ['cant', '✕', 'Can’t Make It'], ['maybe', '?', 'Not Sure']];
   return B.map(([k, i, l]) => `<button class="ans ${k} ${cur === k ? 'on' : ''}" ${attr}="${k}"><span class="i">${i}</span>${l}</button>`).join('');
@@ -761,6 +777,7 @@ function renderDetails(ev) {
   }
   if (ev.state === 'planning') html += datesPanel(ev);
   html += whosComing(ev);
+  if (invited(ev)) html += `<p class="faint" style="text-align:center;font-size:15px;margin:20px 8px 10px">Your answers save the moment you tap them.</p><button class="btn primary block" id="doneBtn">${I.check} Done</button>`;
   body.innerHTML = html;
 
   $$('#myAns .ans').forEach((b) => (b.onclick = async () => {
@@ -770,7 +787,7 @@ function renderDetails(ev) {
     if (next === 'going') burst(b);
     const bringing = next === 'going' && mine && mine.answer === 'going' ? mine.bringing : false;
     const r = await run(() => api('rsvp', { event_id: ev.id, answer: next, bringing }));
-    if (r) { patchEvent(r.event); renderDetails(r.event); }
+    if (r) { patchEvent(r.event); renderDetails(r.event); toast(next ? `Saved: ${ANSWER_LABEL[next]}` : 'Answer cleared.'); }
   }));
   const br = $('#bring');
   if (br) br.onclick = async () => { $('.sw', br).classList.toggle('on'); const r = await run(() => api('rsvp', { event_id: ev.id, answer: 'going', bringing: !mine.bringing })); if (r) { patchEvent(r.event); renderDetails(r.event); } };
@@ -780,6 +797,7 @@ function renderDetails(ev) {
     const r = await run(() => api('rsvp', { event_id: ev.id, person_id: dep, answer: cur === a ? null : a }));
     if (r) { patchEvent(r.event); renderDetails(r.event); }
   }));
+  const done = $('#doneBtn'); if (done) done.onclick = () => { go('#/'); setTimeout(() => toast('All set! Your answers are saved.'), 250); };
   bindDates(ev);
   $$('[data-anyone]').forEach((b) => (b.onclick = () => answerForSheet(ev, b.dataset.anyone)));
 }
@@ -801,7 +819,7 @@ function bindDates(ev) {
     const o = ev.options.find((x) => x.id === b.dataset.opt); const on = !o.votes.includes(S.me.id);
     b.classList.toggle('on', on); $('.check', b).innerHTML = on ? I.check : '';
     const r = await run(() => api('vote', { option_id: o.id, on }));
-    if (r) { patchEvent(r.event); setTimeout(() => renderDetails(r.event), 250); }
+    if (r) { patchEvent(r.event); setTimeout(() => renderDetails(r.event), 250); toast(on ? 'Saved: you can make that date' : 'Saved: removed that date'); }
   }));
   $$('[data-lock]').forEach((b) => (b.onclick = async () => {
     const o = ev.options.find((x) => x.id === b.dataset.lock);
@@ -1076,17 +1094,19 @@ function renderSettings(app) {
       <button class="toggle-row" id="useDef" style="width:100%;text-align:left;margin-top:0"><div class="t">Use the Family Default<small>${leadText(S.defaultLead).replace(/^about /, '')}</small></div><span class="sw ${lead == null ? 'on' : ''}"></span></button>
       <div class="stepper ${lead == null ? 'hidden' : ''}" id="leadStep" style="margin-top:14px;justify-content:center"><button data-d="-7">−</button><b id="leadVal">${lead == null ? '' : leadLabel(lead)}</b><button data-d="7">+</button></div></div>
     <div class="panel glass list" style="padding:6px">
+      <button class="lrow" id="calRow"><span class="n">Add Huddle to My Calendar<small>Apple, Google or Outlook · stays up to date</small></span>${I.chev}</button>
       <button class="lrow" id="chPin"><span class="n">Change PIN</span>${I.chev}</button>
       ${!isStandalone() ? `<button class="lrow" id="a2"><span class="n">Add Huddle to Home Screen<small>For notifications</small></span>${I.chev}</button>` : ''}
       <button class="lrow" id="so" style="color:var(--cant)"><span class="n">Sign Out</span></button>
     </div>
-    <p class="vers">${APP_VERSION}</p>
+    <p class="vers">${APP_VERSION} · ${innerWidth}×${innerHeight}</p>
   </main>`;
   let cur = lead == null ? S.defaultLead : lead;
   const save = async (v) => { const r = await run(() => api('set_lead', { days: v })); if (r) { S.me.lead_time_days = v; const p = person(S.me.id); if (p) p.lead_time_days = v; } };
   $('#useDef').onclick = () => { const on = S.me.lead_time_days != null; $('#useDef .sw').classList.toggle('on', on); $('#leadStep').classList.toggle('hidden', on); if (!on) { $('#leadVal').textContent = leadLabel(cur); save(cur); } else save(null); };
   $$('#leadStep button').forEach((b) => (b.onclick = () => { cur = Math.max(0, Math.min(84, cur + Number(b.dataset.d))); $('#leadVal').textContent = leadLabel(cur); clearTimeout(b._t); b._t = setTimeout(() => save(cur), 400); }));
   $('#chPin').onclick = changePin;
+  $('#calRow').onclick = calendarSheet;
   $('#meCard').onclick = () => photoSheet(S.me.id, S.me.my_name, () => renderSettings(app));
   const a2 = $('#a2'); if (a2) a2.onclick = a2hsSheet;
   $('#so').onclick = async () => { if (!(await confirmSheet('Sign Out?', 'You’ll need your PIN to sign back in.', 'Sign Out', true))) return; await run(() => api('signout')); signOutLocal(); };
@@ -1177,6 +1197,34 @@ function personSheet(p) {
   const re = $('[data-restore]', sh); if (re) re.onclick = async () => { if (await run(() => api('admin_restore_person', { id: p.id }))) { closeSheet(); toast('Restored.'); reloadAdmin(); } };
 }
 async function reloadAdmin() { const d = await run(() => api('admin_data')); if (d) { AD = d; await syncAvatars(AD.people); } await run(boot); if (route().view === 'admin') paintAdmin(); }
+
+/* ================= Calendar feed ================= */
+// One private, live link per person: every event they're invited to with a locked date (minus "Can't Make It")
+async function calendarSheet() {
+  const r = await run(() => api('cal_link'));
+  if (!r) return;
+  const path = `${location.host}/cal/${r.token}.ics`;
+  const webcal = `webcal://${path}`, https = `https://${path}`;
+  const google = `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(webcal)}`;
+  const sh = openSheet(`<h2>Add Huddle to Your Calendar</h2><p class="sub">Every get-together you’re invited to shows up in your calendar. Date changes, new times and cancellations update on their own.</p>
+    <div class="btnrow" style="flex-direction:column;margin-top:4px">
+      <a class="btn primary block" href="${webcal}">${I.cal} Apple Calendar</a>
+      <a class="btn ghost block" href="${google}" target="_blank" rel="noopener">Google Calendar</a>
+      <button class="btn ghost block" data-copy>Copy Link (Outlook, Others)</button>
+    </div>
+    <div class="notes" style="margin-top:16px;font-size:15px;line-height:1.45;background:rgba(255,255,255,.6);padding:12px 14px;border-radius:14px">
+      <b>Apple:</b> tap Subscribe. Changes show up within about an hour.<br>
+      <b>Google:</b> open this on a computer and click Add. Google only checks every several hours, so changes can take up to a day.<br>
+      Events you answer “Can’t Make It” drop off your calendar. Dates still being voted on show up once they’re locked in.
+    </div>
+    <button class="kbswitch" data-reset style="color:var(--ink-3);font-size:14px">Make a New Private Link</button>`);
+  $('[data-copy]', sh).onclick = async () => { try { await navigator.clipboard.writeText(https); toast('Calendar link copied.'); } catch { toast(https); } };
+  $('[data-reset]', sh).onclick = async () => {
+    closeSheet(true);
+    if (!(await confirmSheet('Make a New Link?', 'Calendars using the old link stop updating. You’ll need to add Huddle to them again.', 'New Link', true))) return;
+    if (await run(() => api('cal_link', { reset: true }))) { toast('New link made.'); calendarSheet(); }
+  };
+}
 
 /* ================= Photos ================= */
 function photoSheet(pid, name, after) {

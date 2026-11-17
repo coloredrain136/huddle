@@ -15,7 +15,7 @@ const ID_RE = /^[0-9a-f-]{36}$/i;
 const PID_RE = /^[a-z0-9-]{1,40}$/;
 const MAX_FAILS = 5, LOCK_MIN = 15;
 
-const PEOPLE_COLS = 'id,name,bday_month,bday_day,has_account,is_admin,pin_hash,pin_fails,pin_locked_until,lead_time_days,partner_id,sort,removed';
+const PEOPLE_COLS = 'id,name,bday_month,bday_day,has_account,is_admin,pin_hash,pin_fails,pin_locked_until,lead_time_days,partner_id,sort,removed,cal_token';
 const EVENT_COLS = 'id,title,kind,preset_key,subject_id,state,final_date,final_time,time_mode,location,notes,creator_id,created_at,updated_at';
 
 // No actions below read anything before the version check; reads are allowed on an old version
@@ -419,6 +419,16 @@ const handlers = {
     if (!checkPin(b.old_pin, ctx.me.pin_hash)) fail(401, 'wrong_pin');
     await sb(`huddle_people?id=eq.${q(ctx.me.id)}`, { method: 'PATCH', body: { pin_hash: hashPin(b.new_pin), pin_fails: 0, pin_locked_until: null } });
     return { ok: true };
+  },
+
+  // Private link for the live calendar feed (api/cal.js). reset = make a new one (the old link stops working).
+  async cal_link(b, ctx) {
+    let token = ctx.me.cal_token;
+    if (!token || b.reset) {
+      token = crypto.randomBytes(24).toString('base64url');
+      await sb(`huddle_people?id=eq.${q(ctx.me.id)}`, { method: 'PATCH', body: { cal_token: token } });
+    }
+    return { token };
   },
 
   async set_lead(b, ctx) {
