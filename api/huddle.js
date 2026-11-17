@@ -19,7 +19,9 @@ const PEOPLE_COLS = 'id,name,bday_month,bday_day,has_account,is_admin,pin_hash,p
 const EVENT_COLS = 'id,title,kind,preset_key,subject_id,state,final_date,final_time,time_mode,location,notes,creator_id,created_at,updated_at';
 
 // No actions below read anything before the version check; reads are allowed on an old version
-const READS = new Set(['roster', 'boot', 'chat_list', 'admin_check', 'admin_data', 'ping']);
+const READS = new Set(['roster', 'boot', 'chat_list', 'avatar_get', 'admin_check', 'admin_data', 'ping']);
+const AVATAR_RE = /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/;
+const AVATAR_MAX = 180000; // ~130KB image; the app sends ~25-60KB
 const PUBLIC = new Set(['roster', 'claim', 'signin', 'ping']);
 
 const clean = (s, max) => String(s == null ? '' : s).trim().slice(0, max);
@@ -64,10 +66,14 @@ async function namesFor(viewerId, people) {
   for (const o of ov) if (map[o.subject_id] != null) map[o.subject_id] = o.name;
   return map;
 }
-const publicPerson = (p, names) => ({
+async function avatarVersions() {
+  const rows = (await sb('huddle_avatars?select=person_id,updated_at')) || [];
+  return Object.fromEntries(rows.map((r) => [r.person_id, r.updated_at]));
+}
+const publicPerson = (p, names, avs = {}) => ({
   id: p.id, name: names[p.id] || p.name, default_name: p.name, bday_month: p.bday_month, bday_day: p.bday_day,
   has_account: p.has_account, claimed: !!p.pin_hash, lead_time_days: p.lead_time_days, partner_id: p.partner_id,
-  is_admin: p.is_admin, removed: p.removed,
+  is_admin: p.is_admin, removed: p.removed, avatar_v: avs[p.id] || null,
 });
 
 // Build the full event shape the app uses
@@ -181,7 +187,7 @@ const handlers = {
   async boot(b, ctx) {
     const { me } = ctx;
     await sb(`huddle_sessions?token_hash=eq.${ctx.tokenHash}`, { method: 'PATCH', body: { last_seen: nowIso(), is_standalone: !!b.standalone } });
-    const [people, settings] = await Promise.all([allPeople(), getSettings()]);
+    const [people, settings, avs] = await Promise.all([allPeople(), getSettings(), avatarVersions()]);
     const names = await namesFor(me.id, people);
     const deps = (await sb('huddle_dependents?select=dependent_id,guardian_id')) || [];
     let events;
@@ -193,8 +199,8 @@ const handlers = {
     }
     return {
       version: APP_VERSION, today: todayLocal(),
-      me: { ...publicPerson(me, names), my_name: me.name },
-      people: people.filter((p) => !p.removed).map((p) => publicPerson(p, names)),
+      me: { ...publicPerson(me, names, avs), my_name: me.name },
+      people: people.filter((p) => !p.removed).map((p) => publicPerson(p, names, avs)),
       dependents: deps.filter((d) => d.guardian_id === me.id).map((d) => d.dependent_id),
       default_lead_days: Number(settings.default_lead_days) || 21,
       events: await eventBundle(events),
@@ -385,6 +391,29 @@ const handlers = {
     return { ok: true };
   },
 
+  // Profile photos: small JPEGs kept in their own table, fetched by version so phones cache them
+  async avatar_get(b) {
+    const ids = (Array.isArray(b.ids) ? b.ids : []).filter((x) => PID_RE.test(String(x))).slice(0, 40);
+    if (!ids.length) return { avatars: [] };
+    return { avatars: (await sb(`huddle_avatars?person_id=in.${inList(ids)}&select=person_id,data,updated_at`)) || [] };
+  },
+
+  // Yourself, someone you answer for (Liz), or anyone as admin. data = null removes the photo.
+  async avatar_set(b, ctx) {
+    const who = b.person_id ? pid(b.person_id) : ctx.me.id;
+    if (who !== ctx.me.id && !ctx.admin && !(await guardiansOf(who)).includes(ctx.me.id)) fail(403, 'not_allowed');
+    await getPerson(who);
+    if (b.data == null) {
+      await sb(`huddle_avatars?person_id=eq.${q(who)}`, { method: 'DELETE' });
+      return { person_id: who, avatar_v: null };
+    }
+    const data = String(b.data);
+    if (data.length > AVATAR_MAX || !AVATAR_RE.test(data)) fail(400, 'bad_photo');
+    const updated_at = nowIso();
+    await sb('huddle_avatars?on_conflict=person_id', { method: 'POST', prefer: 'resolution=merge-duplicates', body: [{ person_id: who, data, updated_at }] });
+    return { person_id: who, avatar_v: updated_at };
+  },
+
   async set_pin(b, ctx) {
     if (!PIN_RE.test(String(b.new_pin || ''))) fail(400, 'bad_pin');
     if (!checkPin(b.old_pin, ctx.me.pin_hash)) fail(401, 'wrong_pin');
@@ -408,12 +437,12 @@ const handlers = {
   async admin_check() { return { ok: true }; },
 
   async admin_data() {
-    const [people, ov, deps, settings, key, sessions] = await Promise.all([
+    const [people, ov, deps, settings, key, sessions, avs] = await Promise.all([
       allPeople(), sb('huddle_name_overrides?select=subject_id,viewer_id,name'), sb('huddle_dependents?select=dependent_id,guardian_id'),
-      getSettings(), inviteKey(), sb('huddle_sessions?select=person_id,last_seen,is_standalone'),
+      getSettings(), inviteKey(), sb('huddle_sessions?select=person_id,last_seen,is_standalone'), avatarVersions(),
     ]);
     return {
-      people: people.map((p) => ({ ...publicPerson(p, {}), locked: !!(p.pin_locked_until && new Date(p.pin_locked_until) > new Date()) })),
+      people: people.map((p) => ({ ...publicPerson(p, {}, avs), locked: !!(p.pin_locked_until && new Date(p.pin_locked_until) > new Date()) })),
       overrides: ov || [], dependents: deps || [], default_lead_days: Number(settings.default_lead_days) || 21,
       invite_key: key, sessions: sessions || [],
     };

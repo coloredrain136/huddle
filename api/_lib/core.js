@@ -1,7 +1,7 @@
 // Shared server helpers for Huddle. Files in api/_lib are not public endpoints.
 const crypto = require('crypto');
 
-const APP_VERSION = 'huddle-1'; // must match APP_VERSION in index.html and version.json
+const APP_VERSION = 'huddle-2'; // must match APP_VERSION in index.html and version.json
 
 const env = (k) => process.env[k] || '';
 const SUPA_URL = () => env('SUPABASE_URL').replace(/\/+$/, '');

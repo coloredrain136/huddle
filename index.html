@@ -107,6 +107,17 @@ main{padding-bottom:calc(env(safe-area-inset-bottom) + 120px + var(--gap))}
 /* Avatars */
 .av{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:800;font-size:14px;flex:none;border:2px solid #fff;box-shadow:0 2px 6px rgba(80,40,10,.15)}
 .av.lg{width:64px;height:64px;font-size:24px;border-width:3px}
+.av.pic{background-size:cover;background-position:center}
+.av.xl{width:132px;height:132px;font-size:46px;border-width:4px;margin:0 auto}
+.me-card{display:flex;align-items:center;gap:14px;width:100%;text-align:left}
+.me-card .cam{position:relative}
+.me-card .cam i{position:absolute;right:-4px;bottom:-4px;width:26px;height:26px;border-radius:50%;background:var(--amber);color:#fff;display:grid;place-items:center;border:2px solid #fff;font-style:normal}
+.crop{width:260px;height:260px;border-radius:50%;overflow:hidden;position:relative;margin:4px auto 16px;background:#eee;touch-action:none;box-shadow:0 0 0 4px #fff,0 10px 30px -10px rgba(110,60,15,.5);cursor:grab}
+.crop img{position:absolute;left:0;top:0;transform-origin:0 0;user-select:none;-webkit-user-drag:none;pointer-events:none;max-width:none}
+.zoom{width:100%;accent-color:var(--amber);margin:4px 0 6px}
+.pinkb{position:absolute;opacity:0;width:1px;height:1px;font-size:16px;border:0;padding:0;left:50%;top:0}
+.kbswitch{display:block;margin:16px auto 0;color:var(--amber-2);font-weight:750;font-size:16px;min-height:44px;padding:0 12px}
+.sheet.kb .pad{display:none}
 .stack{display:flex;align-items:center}
 .stack .av{width:32px;height:32px;font-size:12px;margin-left:-9px}
 .stack .av:first-child{margin-left:0}
@@ -329,7 +340,7 @@ input[type=date].input,input[type=time].input{display:flex;align-items:center}
 <div id="app"></div>
 <script>
 'use strict';
-const APP_VERSION = 'huddle-1';
+const APP_VERSION = 'huddle-2';
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -362,6 +373,7 @@ const I = {
   check: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
   send: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>',
   chev: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>',
+  camera: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>',
   lock: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>',
   share: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2F7BF6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7 8l5-5 5 5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>',
   huddle: (s = 26) => `<svg width="${s}" height="${s}" viewBox="0 0 48 48" fill="#FFF7EC"><circle cx="24" cy="15" r="6.5"/><circle cx="12" cy="20" r="5"/><circle cx="36" cy="20" r="5"/><path d="M13 40c0-7 5-12 11-12s11 5 11 12z"/><path d="M3 38c0-5.5 3.8-9.5 9-9.5 2.2 0 4.1.7 5.6 1.9C14.7 32.6 13 36 12.7 40H3z" opacity=".85"/><path d="M45 38c0-5.5-3.8-9.5-9-9.5-2.2 0-4.1.7-5.6 1.9 2.9 2.2 4.6 5.6 4.9 9.6H45z" opacity=".85"/></svg>`,
@@ -417,6 +429,7 @@ function artHTML(a, extra = '') {
 const S = {
   token: LS.get('huddle_token'), k: new URLSearchParams(location.search).get('k') || LS.get('huddle_k'),
   me: null, people: [], events: [], deps: [], defaultLead: 21, today: null,
+  avatars: (() => { try { return JSON.parse(LS.get('huddle_avatars') || '{}'); } catch { return {}; } })(),
   admin: SS.get('huddle_admin'), showPast: false, chat: {}, chatTimer: null, tab: 'details', newEv: null,
 };
 if (S.k) LS.set('huddle_k', S.k);
@@ -426,7 +439,12 @@ const isMe = (id) => S.me && id === S.me.id;
 const COLORS = ['#E8913A', '#D9653F', '#C7834B', '#3F9663', '#5B8FD6', '#9A6BC9', '#D6578A', '#2E9C9C', '#B58B22', '#7A8F3B'];
 function colorOf(id) { let h = 0; for (const c of String(id)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return COLORS[h % COLORS.length]; }
 function initials(n) { const w = String(n || '?').trim().split(/\s+/); return (w.length > 1 ? w[0][0] + w[1][0] : w[0][0]).toUpperCase(); }
-const av = (id, cls = '') => `<span class="av ${cls}" style="background:${colorOf(id)}">${esc(initials(nameOf(id)))}</span>`;
+function avHTML(id, name, v, cls = '') {
+  const a = S.avatars[id];
+  if (v && a && a.v === v) return `<span class="av pic ${cls}" style="background-color:${colorOf(id)};background-image:url(${a.data})"></span>`;
+  return `<span class="av ${cls}" style="background:${colorOf(id)}">${esc(initials(name))}</span>`;
+}
+const av = (id, cls = '') => avHTML(id, nameOf(id), person(id) && person(id).avatar_v, cls);
 function eventDay(ev) { if (ev.state === 'locked') return ev.final_date; const d = ev.options.map((o) => o.day).sort(); return d[0] || null; }
 function isPast(ev) {
   const t = today();
@@ -555,22 +573,40 @@ async function renderJoin(app) {
   $('#names').innerHTML = data.people.map((p) => `<button class="nametile glass" data-id="${esc(p.id)}" data-claimed="${p.claimed ? 1 : ''}" data-name="${esc(p.name)}"><span class="av lg" style="background:${colorOf(p.id)}">${esc(initials(p.name))}</span>${esc(p.name)}${p.claimed ? `<small>${I.lock} Sign In</small>` : '<small>New</small>'}</button>`).join('');
   $$('.nametile').forEach((b) => (b.onclick = () => pinFlow(b.dataset.id, b.dataset.name, !!b.dataset.claimed)));
 }
+// PIN entry: big on-screen pad, or the phone's number keyboard ("Use Keyboard", remembered), or a real keyboard
 function pinPad(title, sub, onDone) {
-  const sh = openSheet(`<h2>${esc(title)}</h2><p class="sub">${esc(sub)}</p><div class="dots"><i></i><i></i><i></i><i></i></div><div class="err"></div>
-    <div class="pad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<button data-n="${n}">${n}</button>`).join('')}<button class="blank" disabled></button><button data-n="0">0</button><button data-del aria-label="Delete">⌫</button></div>`);
-  let v = '';
-  const dots = $('.dots', sh), err = $('.err', sh);
-  const paint = () => $$('i', dots).forEach((d, i) => d.classList.toggle('f', i < v.length));
+  const useKb = LS.get('huddle_pin_kb') === '1';
+  const sh = openSheet(`<h2>${esc(title)}</h2><p class="sub">${esc(sub)}</p><div class="dots" style="position:relative"><i></i><i></i><i></i><i></i><input class="pinkb" type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" aria-label="PIN"></div><div class="err"></div>
+    <div class="pad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<button data-n="${n}">${n}</button>`).join('')}<button class="blank" disabled></button><button data-n="0">0</button><button data-del aria-label="Delete">⌫</button></div>
+    <button class="kbswitch" data-kb>${useKb ? 'Use Number Pad' : 'Use Keyboard'}</button>`, { onClose: () => document.removeEventListener('keydown', onKey) });
+  let v = '', busy = false;
+  const dots = $('.dots', sh), err = $('.err', sh), inp = $('.pinkb', sh), sw = $('[data-kb]', sh);
+  const paint = () => { $$('i', dots).forEach((d, i) => d.classList.toggle('f', i < v.length)); if (inp.value !== v) inp.value = v; };
+  const push = (val) => {
+    if (busy) return;
+    v = val.replace(/\D/g, '').slice(0, 4); paint(); err.textContent = '';
+    if (v.length === 4) { const pin = v; busy = true; setTimeout(() => { busy = false; onDone(pin, api_); }, 150); }
+  };
   const api_ = {
     reset(msg) { v = ''; paint(); if (msg) { err.textContent = msg; dots.classList.remove('shake'); void dots.offsetWidth; dots.classList.add('shake'); } },
     set(t, s) { $('h2', sh).textContent = t; $('.sub', sh).textContent = s; err.textContent = ''; v = ''; paint(); },
   };
-  $$('.pad button', sh).forEach((b) => (b.onclick = async () => {
-    if (b.dataset.del != null) { v = v.slice(0, -1); paint(); return; }
-    if (b.dataset.n == null || v.length >= 4) return;
-    v += b.dataset.n; paint(); err.textContent = '';
-    if (v.length === 4) { const pin = v; setTimeout(() => onDone(pin, api_), 150); }
+  const kbMode = (on, focus) => { sh.classList.toggle('kb', on); sw.textContent = on ? 'Use Number Pad' : 'Use Keyboard'; LS.set('huddle_pin_kb', on ? '1' : null); if (on && focus) inp.focus(); if (!on) inp.blur(); };
+  $$('.pad button', sh).forEach((b) => (b.onclick = () => {
+    if (b.dataset.del != null) return push(v.slice(0, -1));
+    if (b.dataset.n != null && v.length < 4) push(v + b.dataset.n);
   }));
+  inp.addEventListener('input', () => push(inp.value));
+  dots.onclick = () => inp.focus();
+  sw.onclick = () => kbMode(!sh.classList.contains('kb'), true);
+  // A real keyboard (Mac, iPad keyboard) works anytime
+  function onKey(e) {
+    if (e.target === inp || !document.body.contains(sh)) return;
+    if (/^\d$/.test(e.key) && v.length < 4) { e.preventDefault(); push(v + e.key); }
+    else if (e.key === 'Backspace') { e.preventDefault(); push(v.slice(0, -1)); }
+  }
+  document.addEventListener('keydown', onKey);
+  kbMode(useKb, useKb);
   return sh;
 }
 function pinFlow(id, name, claimed) {
@@ -617,6 +653,23 @@ async function boot() {
   const d = await api('boot', { standalone: isStandalone() });
   S.me = d.me; S.people = d.people; S.events = d.events; S.deps = d.dependents; S.defaultLead = d.default_lead_days; S.today = d.today;
   if (d.version && d.version !== APP_VERSION) showUpdate();
+  syncAvatars();
+}
+function saveAvatars() { try { localStorage.setItem('huddle_avatars', JSON.stringify(S.avatars)); } catch {} }
+async function syncAvatars(extra = []) {
+  const want = {};
+  for (const p of S.people) if (p.avatar_v) want[p.id] = p.avatar_v;
+  for (const p of extra) if (p.avatar_v) want[p.id] = p.avatar_v;
+  let changed = false;
+  for (const id of Object.keys(S.avatars)) { const p = S.people.find((x) => x.id === id); if (p && !p.avatar_v) { delete S.avatars[id]; changed = true; } }
+  const need = Object.keys(want).filter((id) => !S.avatars[id] || S.avatars[id].v !== want[id]);
+  if (need.length) {
+    try {
+      const r = await api('avatar_get', { ids: need });
+      for (const a of r.avatars) { S.avatars[a.person_id] = { v: a.updated_at, data: a.data }; changed = true; }
+    } catch {}
+  }
+  if (changed) { saveAvatars(); if (!$('.sheet') && route().view !== 'e') render(); else if (route().view === 'e' && S.tab === 'details' && !$('.sheet')) render(); }
 }
 async function refresh() { if (!S.token) return; await run(boot); if (!$('.sheet') && route().view !== 'e') render(); else if (route().view === 'e' && S.tab === 'details' && !$('.sheet')) render(); }
 
@@ -1018,7 +1071,7 @@ function renderSettings(app) {
   const lead = S.me.lead_time_days;
   app.innerHTML = header(`<button class="iconbtn" aria-label="Back" onclick="go('#/')">${I.back}</button><h2 style="font-size:22px">Settings</h2>`) +
   `<main class="wrap view">
-    <div class="panel glass" style="display:flex;align-items:center;gap:14px">${av(S.me.id, 'lg')}<div><div class="faint" style="font-size:14px;font-weight:700">Signed In As</div><div style="font-size:22px;font-weight:800">${esc(S.me.my_name)}</div><div class="faint" style="font-size:14px">Joe can change names.</div></div></div>
+    <button class="panel glass me-card" id="meCard"><span class="cam">${av(S.me.id, 'lg')}<i>${I.camera}</i></span><div><div class="faint" style="font-size:14px;font-weight:700">Signed In As</div><div style="font-size:22px;font-weight:800">${esc(S.me.my_name)}</div><div class="link" style="font-size:15px">${person(S.me.id) && person(S.me.id).avatar_v ? 'Change Photo' : 'Add a Photo'}</div></div></button>
     <div class="panel glass"><h2>How Much Notice Do You Need?</h2><p class="muted" style="margin:-6px 0 14px;font-size:15px">If someone plans something sooner than this, they’ll get a friendly heads up.</p>
       <button class="toggle-row" id="useDef" style="width:100%;text-align:left;margin-top:0"><div class="t">Use the Family Default<small>${leadText(S.defaultLead).replace(/^about /, '')}</small></div><span class="sw ${lead == null ? 'on' : ''}"></span></button>
       <div class="stepper ${lead == null ? 'hidden' : ''}" id="leadStep" style="margin-top:14px;justify-content:center"><button data-d="-7">−</button><b id="leadVal">${lead == null ? '' : leadLabel(lead)}</b><button data-d="7">+</button></div></div>
@@ -1034,6 +1087,7 @@ function renderSettings(app) {
   $('#useDef').onclick = () => { const on = S.me.lead_time_days != null; $('#useDef .sw').classList.toggle('on', on); $('#leadStep').classList.toggle('hidden', on); if (!on) { $('#leadVal').textContent = leadLabel(cur); save(cur); } else save(null); };
   $$('#leadStep button').forEach((b) => (b.onclick = () => { cur = Math.max(0, Math.min(84, cur + Number(b.dataset.d))); $('#leadVal').textContent = leadLabel(cur); clearTimeout(b._t); b._t = setTimeout(() => save(cur), 400); }));
   $('#chPin').onclick = changePin;
+  $('#meCard').onclick = () => photoSheet(S.me.id, S.me.my_name, () => renderSettings(app));
   const a2 = $('#a2'); if (a2) a2.onclick = a2hsSheet;
   $('#so').onclick = async () => { if (!(await confirmSheet('Sign Out?', 'You’ll need your PIN to sign back in.', 'Sign Out', true))) return; await run(() => api('signout')); signOutLocal(); };
 }
@@ -1066,6 +1120,7 @@ async function renderAdmin(app) {
   $('#adOff').onclick = () => { S.admin = null; SS.set('huddle_admin', null); go('#/'); };
   AD = await run(() => api('admin_data'));
   if (!AD) return;
+  syncAvatars(AD.people);
   paintAdmin();
 }
 function paintAdmin() {
@@ -1073,7 +1128,7 @@ function paintAdmin() {
   const link = `${location.origin}/?k=${encodeURIComponent(AD.invite_key)}`;
   const seen = (id) => { const s = AD.sessions.filter((x) => x.person_id === id).sort((a, b) => b.last_seen.localeCompare(a.last_seen))[0]; return s ? new Date(s.last_seen).toLocaleDateString([], { month: 'short', day: 'numeric' }) : null; };
   m.innerHTML = `<div class="tabs glass">${[['people', 'People'], ['events', 'Events'], ['family', 'Family']].map(([k, l]) => `<button data-t="${k}" class="${adminTab === k ? 'on' : ''}">${l}</button>`).join('')}</div>` +
-    (adminTab === 'people' ? `<div class="panel glass list" style="padding:6px">${AD.people.map((p) => `<button class="lrow" data-p="${p.id}" style="${p.removed ? 'opacity:.5' : ''}"><span class="av" style="background:${colorOf(p.id)}">${esc(initials(p.name))}</span><span class="n">${esc(p.name)}${p.removed ? ' (Removed)' : ''}<small>${!p.has_account ? 'No account' : p.claimed ? `Joined${seen(p.id) ? ' · last open ' + seen(p.id) : ''}` : 'Hasn’t joined yet'}${p.locked ? ' · Locked out' : ''}</small></span>${I.chev}</button>`).join('')}</div>
+    (adminTab === 'people' ? `<div class="panel glass list" style="padding:6px">${AD.people.map((p) => `<button class="lrow" data-p="${p.id}" style="${p.removed ? 'opacity:.5' : ''}">${avHTML(p.id, p.name, p.avatar_v)}<span class="n">${esc(p.name)}${p.removed ? ' (Removed)' : ''}<small>${!p.has_account ? 'No account' : p.claimed ? `Joined${seen(p.id) ? ' · last open ' + seen(p.id) : ''}` : 'Hasn’t joined yet'}${p.locked ? ' · Locked out' : ''}</small></span>${I.chev}</button>`).join('')}</div>
       <button class="btn ghost block" id="addP" style="margin-top:12px">+ Add Person</button>
       <div class="panel glass"><h2>Invite Link</h2><div class="input" style="font-size:14px;word-break:break-all;min-height:0">${esc(link)}</div><div class="btnrow"><button class="btn primary" id="cpy">Copy Link</button><button class="btn ghost" id="regen">New Link</button></div></div>`
     : adminTab === 'events' ? `<div class="panel glass list" style="padding:6px">${S.events.length ? S.events.map((e) => `<button class="lrow" data-e="${e.id}"><span style="font-size:28px">${artOf(e).emoji}</span><span class="n">${esc(e.title)}<small>${esc(whenText(e))} · by ${esc(nameOf(e.creator_id))}</small></span>${I.chev}</button>`).join('') : '<p class="muted" style="padding:12px">No events yet.</p>'}</div><p class="faint" style="font-size:14px;margin:8px 4px">Open an event to edit it, delete it, lock dates, delete chat messages (long-press), or answer for anyone.</p>`
@@ -1097,6 +1152,7 @@ function personSheet(p) {
   const guards = new Set(AD.dependents.filter((d) => d.dependent_id === p.id).map((d) => d.guardian_id));
   const ovr = (viewer) => (AD.overrides.find((o) => o.subject_id === p.id && o.viewer_id === viewer) || {}).name || '';
   const sh = openSheet(`<div class="inner"><div class="sheet-head"><button class="iconbtn" data-x aria-label="Close">${I.close}</button><h2>${isNew ? 'Add Person' : esc(p.name)}</h2><span style="width:48px"></span></div>
+    ${isNew ? '' : `<button class="toggle-row" id="pph" style="width:100%;text-align:left;margin:0 0 14px">${avHTML(p.id, p.name, p.avatar_v, 'lg')}<div class="t">Photo<small>${p.avatar_v ? 'Tap to change or remove' : 'Tap to add one'}</small></div>${I.chev}</button>`}
     <label class="field"><span>Name Most People See</span><input class="input" id="pn" value="${esc(p.name)}" maxlength="40"></label>
     <div class="field"><span>Birthday</span><div style="display:flex;gap:10px"><select class="input" id="pm"><option value="">Month</option>${MONTHS_FULL.map((m, i) => `<option value="${i + 1}" ${p.bday_month === i + 1 ? 'selected' : ''}>${m}</option>`).join('')}</select><select class="input" id="pd" style="max-width:110px"><option value="">Day</option>${Array.from({ length: 31 }, (_, i) => `<option ${p.bday_day === i + 1 ? 'selected' : ''}>${i + 1}</option>`).join('')}</select></div></div>
     <button class="toggle-row" id="pa" style="width:100%;text-align:left"><div class="t">Has an Account<small>Off for people others answer for (like Liz)</small></div><span class="sw ${p.has_account ? 'on' : ''}"></span></button>
@@ -1106,6 +1162,7 @@ function personSheet(p) {
     <div class="btnrow"><button class="btn primary block" data-s>${isNew ? 'Add Person' : 'Save'}</button></div>
     ${isNew ? '' : `<div class="btnrow">${p.claimed ? '<button class="btn ghost" data-reset>Reset PIN</button>' : ''}${p.id === S.me.id ? '' : p.removed ? '<button class="btn ghost" data-restore>Restore</button>' : '<button class="btn danger" data-rm>Remove</button>'}</div>`}</div>`, { full: true });
   let hasAcc = p.has_account; const g = new Set(guards);
+  const ph = $('#pph', sh); if (ph) ph.onclick = () => photoSheet(p.id, p.name, () => reloadAdmin());
   $('[data-x]', sh).onclick = () => closeSheet();
   $('#pa', sh).onclick = () => { hasAcc = !hasAcc; $('#pa .sw', sh).classList.toggle('on', hasAcc); $('#pgW', sh).classList.toggle('hidden', hasAcc); };
   $$('[data-g]', sh).forEach((b) => (b.onclick = () => { b.classList.toggle('on'); g[b.classList.contains('on') ? 'add' : 'delete'](b.dataset.g); }));
@@ -1119,7 +1176,69 @@ function personSheet(p) {
   const rm = $('[data-rm]', sh); if (rm) rm.onclick = async () => { if (!(await confirmSheet(`Remove ${p.name}?`, 'They disappear from new events and get signed out. Their old answers and messages stay. You can restore them later.', 'Remove', true))) return; if (await run(() => api('admin_remove_person', { id: p.id }))) { toast('Removed.'); reloadAdmin(); } };
   const re = $('[data-restore]', sh); if (re) re.onclick = async () => { if (await run(() => api('admin_restore_person', { id: p.id }))) { closeSheet(); toast('Restored.'); reloadAdmin(); } };
 }
-async function reloadAdmin() { const d = await run(() => api('admin_data')); if (d) AD = d; await run(boot); if (route().view === 'admin') paintAdmin(); }
+async function reloadAdmin() { const d = await run(() => api('admin_data')); if (d) { AD = d; await syncAvatars(AD.people); } await run(boot); if (route().view === 'admin') paintAdmin(); }
+
+/* ================= Photos ================= */
+function photoSheet(pid, name, after) {
+  const p = person(pid) || (AD && AD.people.find((x) => x.id === pid)) || {};
+  const sh = openSheet(`<h2>${isMe(pid) ? 'Your Photo' : esc(name) + '’s Photo'}</h2><p class="sub">Everyone in the family sees it.</p>
+    <div style="margin:6px 0 18px">${avHTML(pid, name, p.avatar_v, 'xl')}</div>
+    <div class="btnrow" style="flex-direction:column"><button class="btn primary block" data-pick>${p.avatar_v ? 'Choose a New Photo' : 'Choose a Photo'}</button>${p.avatar_v ? '<button class="btn danger block" data-rm>Remove Photo</button>' : ''}</div>`);
+  $('[data-pick]', sh).onclick = () => pickImage((img) => cropSheet(img, pid, after));
+  const rm = $('[data-rm]', sh);
+  if (rm) rm.onclick = async () => { const r = await run(() => api('avatar_set', { person_id: pid, data: null })); if (r) { applyAvatar(pid, null); closeSheet(); toast('Photo removed.'); after && after(); } };
+}
+// Must run inside the tap so iOS opens the photo picker
+function pickImage(cb) {
+  const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*';
+  inp.style.cssText = 'position:fixed;left:-999px;top:0'; document.body.appendChild(inp);
+  inp.onchange = () => {
+    const f = inp.files && inp.files[0]; inp.remove(); if (!f) return;
+    const url = URL.createObjectURL(f); const img = new Image();
+    img.onload = () => cb(img, url); img.onerror = () => toast('That photo couldn’t be opened. Try another one.');
+    img.src = url;
+  };
+  inp.click();
+}
+// Drag to move, slider (or pinch) to zoom, saved as a 320px square JPEG
+function cropSheet(img, pid, after) {
+  const sh = openSheet(`<h2>Move and Zoom</h2><p class="sub">Drag the photo to center the face.</p><div class="crop" id="crop"></div>
+    <input class="zoom" id="zm" type="range" min="1" max="4" step="0.01" value="1" aria-label="Zoom">
+    <div class="btnrow"><button class="btn ghost" data-c>Cancel</button><button class="btn primary" data-s>Use Photo</button></div>`);
+  const box = $('#crop', sh); box.appendChild(img);
+  const D = 260, W = img.naturalWidth, H = img.naturalHeight, base = D / Math.min(W, H);
+  let z = 1, x = (D - W * base) / 2, y = (D - H * base) / 2;
+  const clamp = () => { const s = base * z; x = Math.min(0, Math.max(D - W * s, x)); y = Math.min(0, Math.max(D - H * s, y)); };
+  const paint = () => { clamp(); img.style.transform = `translate(${x}px,${y}px) scale(${base * z})`; };
+  const zoomTo = (nz) => { const s0 = base * z; const cx = (D / 2 - x) / s0, cy = (D / 2 - y) / s0; z = Math.min(4, Math.max(1, nz)); const s1 = base * z; x = D / 2 - cx * s1; y = D / 2 - cy * s1; $('#zm', sh).value = z; paint(); };
+  paint();
+  const pts = new Map(); let pinch0 = null;
+  box.addEventListener('pointerdown', (e) => { box.setPointerCapture(e.pointerId); pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); });
+  box.addEventListener('pointermove', (e) => {
+    if (!pts.has(e.pointerId)) return; const prev = pts.get(e.pointerId); pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.size === 2) { const [a, b] = [...pts.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y); if (pinch0) zoomTo(z * d / pinch0); pinch0 = d; return; }
+    x += e.clientX - prev.x; y += e.clientY - prev.y; paint();
+  });
+  const up = (e) => { pts.delete(e.pointerId); pinch0 = null; };
+  box.addEventListener('pointerup', up); box.addEventListener('pointercancel', up);
+  $('#zm', sh).oninput = (e) => zoomTo(Number(e.target.value));
+  $('[data-c]', sh).onclick = () => closeSheet();
+  $('[data-s]', sh).onclick = async (e) => {
+    e.target.disabled = true;
+    const c = document.createElement('canvas'); c.width = c.height = 320; const k = 320 / D; const g = c.getContext('2d');
+    g.imageSmoothingQuality = 'high'; g.drawImage(img, x * k, y * k, W * base * z * k, H * base * z * k);
+    let data = c.toDataURL('image/jpeg', 0.85); if (data.length > 150000) data = c.toDataURL('image/jpeg', 0.7);
+    const r = await run(() => api('avatar_set', { person_id: pid, data }));
+    e.target.disabled = false; if (!r) return;
+    applyAvatar(pid, r.avatar_v, data); URL.revokeObjectURL(img.src); closeSheet(); toast('Photo saved.'); after && after();
+  };
+}
+function applyAvatar(pid, v, data) {
+  for (const list of [S.people, AD ? AD.people : []]) { const p = list.find((x) => x.id === pid); if (p) p.avatar_v = v; }
+  if (S.me && pid === S.me.id) S.me.avatar_v = v;
+  if (v) S.avatars[pid] = { v, data }; else delete S.avatars[pid];
+  saveAvatars();
+}
 
 /* ================= Fun ================= */
 function burst(el) {
