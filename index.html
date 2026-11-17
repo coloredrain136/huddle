@@ -278,6 +278,29 @@ input[type=date].input,input[type=time].input{display:flex;align-items:center}
 .tick{width:32px;height:32px;border-radius:10px;border:2.5px solid #D9C7B1;display:grid;place-items:center;transition:all .3s var(--spring)}
 .prow.on .tick{background:var(--amber);border-color:var(--amber)}
 
+.prop{padding:14px;border-radius:18px;background:rgba(255,255,255,.75);margin-bottom:10px;animation:cardIn .45s var(--spring) both}
+.prop .who{display:flex;align-items:center;gap:10px;font-size:15px;color:var(--ink-2);font-weight:700}
+.prop .what{font-size:20px;font-weight:850;margin:8px 0 2px}
+.prop .why{font-size:15px;color:var(--ink-2);font-style:italic;margin-top:4px}
+.prop .tally{display:flex;gap:14px;align-items:center;margin-top:10px;font-size:15px;font-weight:750;flex-wrap:wrap}
+.prop .tally .stack .av{width:28px;height:28px;font-size:11px}
+.vote2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.vote2 button{min-height:52px;border-radius:16px;font-weight:800;font-size:16px;background:#fff;border:2px solid transparent;transition:all .25s var(--spring)}
+.vote2 button:active{transform:scale(.95)}
+.vote2 .yes.on{background:var(--going);color:#fff}
+.vote2 .no.on{background:var(--cant);color:#fff}
+.mgr{display:flex;gap:8px;margin-top:10px}
+.mgr .btn{flex:1;min-height:48px;font-size:16px}
+.bring .item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:16px;background:rgba(255,255,255,.75);margin-bottom:8px;min-height:58px}
+.bring .item .l{flex:1;font-weight:750;min-width:0;word-wrap:break-word}
+.bring .item .l small{display:block;font-weight:650;color:var(--ink-3);font-size:14px}
+.bring .item .claim{min-height:42px;padding:0 14px;border-radius:14px;font-weight:800;font-size:15px;background:var(--amber-soft);color:var(--amber-2);white-space:nowrap}
+.bring .item .claim.mine{background:var(--going-soft);color:var(--going)}
+.bring .item .rm{width:38px;height:38px;border-radius:12px;color:var(--ink-3);display:grid;place-items:center;flex:none}
+.addrow{display:flex;gap:8px;margin-top:6px}
+.addrow .input{flex:1;min-width:0}
+.sysline{align-self:center;max-width:92%;text-align:center;font-size:14px;font-weight:700;color:var(--ink-2);background:rgba(255,255,255,.65);padding:8px 14px;border-radius:14px;margin:4px 0;animation:msgIn .35s var(--spring) both}
+.need-sub{font-size:15px;color:var(--amber-2);font-weight:700}
 .warn{border-radius:20px;padding:16px;background:linear-gradient(145deg,#FFF3DC,#FFE7C4);border:1px solid #F5CF96;margin-top:14px;animation:cardIn .5s var(--spring) both}
 .warn b{display:block;font-size:18px;margin-bottom:4px}
 .summary{overflow:hidden}
@@ -322,6 +345,7 @@ input[type=date].input,input[type=time].input{display:flex;align-items:center}
 /* Toast + banner */
 .toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 100px + var(--gap));transform:translateX(-50%);z-index:80;background:rgba(58,42,27,.92);color:#fff;font-weight:700;padding:12px 18px;border-radius:99px;font-size:16px;max-width:90vw;text-align:center;animation:toastIn .4s var(--spring) both}
 @keyframes toastIn{from{opacity:0;transform:translate(-50%,16px)}}
+.toast.top{bottom:auto;top:calc(env(safe-area-inset-top) + 14px + var(--top-extra))}
 .update{position:fixed;left:50%;top:calc(env(safe-area-inset-top) + 8px + var(--top-extra));transform:translateX(-50%);z-index:90;background:var(--ink);color:#fff;font-weight:800;padding:12px 20px;border-radius:99px;font-size:16px;box-shadow:var(--shadow-lg);animation:toastIn .4s var(--spring) both}
 .empty{text-align:center;padding:40px 20px}
 .empty .e{font-size:64px;animation:bob 4s ease-in-out infinite}
@@ -353,7 +377,7 @@ input[type=date].input,input[type=time].input{display:flex;align-items:center}
 <div id="app"></div>
 <script>
 'use strict';
-const APP_VERSION = 'huddle-3';
+const APP_VERSION = 'huddle-4';
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -464,12 +488,29 @@ function isPast(ev) {
   if (ev.state === 'locked') return ev.final_date < t;
   return ev.options.length > 0 && ev.options.every((o) => o.day < t);
 }
+const timePoll = (ev) => (ev.proposals || []).filter((p) => p.kind === 'time');
+const changes = (ev) => (ev.proposals || []).filter((p) => p.kind === 'change');
 function whenText(ev, long) {
-  if (ev.state !== 'locked') return 'Picking a Date';
+  if (ev.state !== 'locked') return timePoll(ev).length ? 'Picking a Date and Time' : 'Picking a Date';
   const d = fmtDay(ev.final_date, long);
   if (ev.time_mode === 'set' && ev.final_time) return `${d} · ${fmtTime(ev.final_time)}`;
   if (ev.time_mode === 'allday') return `${d} · All Day`;
-  return `${d} · Time TBD`;
+  return `${d} · ${timePoll(ev).length ? 'Voting on Time' : 'Time TBD'}`;
+}
+// What this person still owes the event: an answer, a time vote, or a vote on a suggested change
+function needsFrom(ev) {
+  if (!invited(ev) || isPast(ev)) return null;
+  if (!myRsvp(ev)) return 'Tap to Answer';
+  const me = S.me.id;
+  if (changes(ev).some((p) => !p.yes.includes(me) && !p.no.includes(me))) return 'Vote on a Change';
+  const tp = timePoll(ev); if (tp.length && !tp.some((p) => p.yes.includes(me))) return 'Pick a Time';
+  return null;
+}
+function changeText(ev, p) {
+  const d = p.day || ev.final_date;
+  const mode = p.time_mode || ev.time_mode, t = p.time_mode ? p.time : ev.final_time;
+  const tt = mode === 'set' && t ? fmtTime(t) : mode === 'allday' ? 'All Day' : 'Time TBD';
+  return `${fmtDay(d)} · ${tt}`;
 }
 const myRsvp = (ev) => ev.rsvps[S.me.id];
 const invited = (ev, id = S.me.id) => ev.invitees.includes(id);
@@ -495,10 +536,12 @@ const ERR = {
   offline: "Can't reach Huddle. Check your connection.", wrong_pin: "That PIN doesn't match.", locked: 'Too many tries. Wait 15 minutes, or ask Joe to reset your PIN.',
   bad_invite: "This invite link isn't working anymore. Ask Joe for the new one.", already_claimed: 'Someone already picked that name.', date_locked: 'The date was already locked in.',
   option_exists: 'That date is already an option.', not_allowed: "You can't do that one.", bad_passcode: 'Wrong passcode.', need_2_to_5_options: 'Offer 2 to 5 dates.',
-  title_required: 'Give it a name first.', time_required: 'Pick a time.', update_required: 'Huddle just updated. Tap the banner to reload.', event_not_found: 'That event is gone.',
+  title_required: 'Give it a name first.', no_change: 'That’s the same as the current plan. Pick a different date or time.', not_locked: 'Still picking a date. Add a date option instead.',
+  proposal_closed: 'That was already decided.', already_claimed_item: 'Someone already claimed that.', bring_off: 'The bring list is turned off for this event.',
+  too_many_suggestions: 'You have 3 suggestions open. Take one back first.', need_2_to_6_times: 'Offer 2 to 6 times.', time_required: 'Pick a time.', update_required: 'Huddle just updated. Tap the banner to reload.', event_not_found: 'That event is gone.',
 };
 const errText = (e) => ERR[e.message] || 'Something went wrong. Try again.';
-function toast(msg) { $$('.toast').forEach((t) => t.remove()); const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 2800); }
+function toast(msg) { $$('.toast').forEach((t) => t.remove()); const t = document.createElement('div'); t.className = 'toast' + ($('.sheet') ? ' top' : ''); t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 2800); }
 async function run(fn) { try { return await fn(); } catch (e) { if (e.status !== 401 && e.status !== 426) toast(errText(e)); return null; } }
 function patchEvent(ev) { const i = S.events.findIndex((e) => e.id === ev.id); if (i >= 0) S.events[i] = ev; else S.events.unshift(ev); }
 
@@ -707,10 +750,10 @@ function renderHome(app) {
   const evs = S.events.slice();
   const up = evs.filter((e) => !isPast(e)).sort((a, b) => (eventDay(a) || '9999').localeCompare(eventDay(b) || '9999'));
   const past = evs.filter(isPast).sort((a, b) => (eventDay(b) || '').localeCompare(eventDay(a) || ''));
-  const needs = up.filter((e) => invited(e) && !myRsvp(e));
+  const needs = up.filter((e) => needsFrom(e));
   app.innerHTML = header(`${logoHTML()}<div class="spacer"></div>${S.admin ? '<a class="adminpill" href="#/admin">Admin</a>' : ''}<button class="iconbtn glass" aria-label="Settings" onclick="go('#/settings')">${I.gear}</button>`) +
   `<main class="wrap view">
-    ${needs.length ? `<div class="section-title">Needs Your Answer <small>${needs.length}</small></div><div class="strip">${needs.map((e) => { const a = artOf(e); return `<button class="needs glass" data-ev="${e.id}"><span class="emo" style="background:${a.grad}">${a.emoji}</span><span style="min-width:0"><b>${esc(e.title)}</b><span>Tap to Answer</span></span></button>`; }).join('')}</div>` : ''}
+    ${needs.length ? `<div class="section-title">Needs Your Answer <small>${needs.length}</small></div><div class="strip">${needs.map((e) => { const a = artOf(e); return `<button class="needs glass" data-ev="${e.id}"><span class="emo" style="background:${a.grad}">${a.emoji}</span><span style="min-width:0"><b>${esc(e.title)}</b><span>${needsFrom(e)}</span></span></button>`; }).join('')}</div>` : ''}
     <div class="section-title">Coming Up</div>
     ${up.length ? `<div class="cards stagger">${up.map(cardHTML).join('')}</div>` : `<div class="empty glass"><div class="e">🏡</div><h3>Nothing Planned Yet</h3><p class="muted">Tap the + button to start a get-together.</p></div>`}
     ${past.length ? `<button class="past-toggle ${S.showPast ? 'open' : ''}" id="pastT">${I.chev} Past <span class="faint">(${past.length})</span></button>${S.showPast ? `<div class="cards stagger">${past.map(cardHTML).join('')}</div>` : ''}` : ''}
@@ -775,7 +818,11 @@ function renderDetails(ev) {
     }
     html += '</div>';
   }
+  html += changesPanel(ev);
+  html += timePollPanel(ev);
   if (ev.state === 'planning') html += datesPanel(ev);
+  if (ev.bring_list) html += bringPanel(ev);
+  if (ev.state === 'locked' && invited(ev) && !isPast(ev)) html += flexPanel(ev);
   html += whosComing(ev);
   if (invited(ev)) html += `<p class="faint" style="text-align:center;font-size:15px;margin:20px 8px 10px">Your answers save the moment you tap them.</p><button class="btn primary block" id="doneBtn">${I.check} Done</button>`;
   body.innerHTML = html;
@@ -787,7 +834,7 @@ function renderDetails(ev) {
     if (next === 'going') burst(b);
     const bringing = next === 'going' && mine && mine.answer === 'going' ? mine.bringing : false;
     const r = await run(() => api('rsvp', { event_id: ev.id, answer: next, bringing }));
-    if (r) { patchEvent(r.event); renderDetails(r.event); toast(next ? `Saved: ${ANSWER_LABEL[next]}` : 'Answer cleared.'); }
+    if (r) { patchEvent(r.event); renderDetails(r.event); if (next === 'cant' && cantWillAsk(r.event)) setTimeout(() => cantSheet(r.event), 350); else toast(next ? `Saved: ${ANSWER_LABEL[next]}` : 'Answer cleared.'); }
   }));
   const br = $('#bring');
   if (br) br.onclick = async () => { $('.sw', br).classList.toggle('on'); const r = await run(() => api('rsvp', { event_id: ev.id, answer: 'going', bringing: !mine.bringing })); if (r) { patchEvent(r.event); renderDetails(r.event); } };
@@ -799,6 +846,7 @@ function renderDetails(ev) {
   }));
   const done = $('#doneBtn'); if (done) done.onclick = () => { go('#/'); setTimeout(() => toast('All set! Your answers are saved.'), 250); };
   bindDates(ev);
+  bindFlex(ev);
   $$('[data-anyone]').forEach((b) => (b.onclick = () => answerForSheet(ev, b.dataset.anyone)));
 }
 function datesPanel(ev) {
@@ -867,9 +915,11 @@ function answerForSheet(ev, pid) {
 function eventMenu(ev) {
   const sh = openSheet(`<h2>${esc(ev.title)}</h2><p class="sub">Only you${S.admin ? ' (admin)' : ''} see these.</p><div class="glass list">
     <button class="lrow" data-edit><span class="n">Edit Event</span>${I.chev}</button>
+    <button class="lrow" data-tpoll><span class="n">Let Everyone Vote on the Time<small>Offer a few times to choose from</small></span>${I.chev}</button>
     ${ev.state === 'locked' ? '<button class="lrow" data-reopen><span class="n">Pick a Different Date<small>Goes back to voting on dates</small></span>' + I.chev + '</button>' : ''}
     <button class="lrow" data-del style="color:var(--cant)"><span class="n">Delete Event</span></button></div>`);
   $('[data-edit]', sh).onclick = () => editEventSheet(ev);
+  $('[data-tpoll]', sh).onclick = () => addTimeSheet(ev, true);
   const ro = $('[data-reopen]', sh);
   if (ro) ro.onclick = async () => { closeSheet(true); if (!(await confirmSheet('Pick a Different Date?', 'The event goes back to voting. The current date becomes one of the options.', 'Reopen'))) return; const r = await run(() => api('reopen', { event_id: ev.id })); if (r) { patchEvent(r.event); render(); } };
   $('[data-del]', sh).onclick = async () => { closeSheet(true); if (!(await confirmSheet('Delete This Event?', 'Everyone loses the event and its chat. This can’t be undone.', 'Delete', true))) return; const r = await run(() => api('delete_event', { id: ev.id })); if (r) { S.events = S.events.filter((e) => e.id !== ev.id); toast('Event deleted.'); go('#/'); } };
@@ -883,18 +933,137 @@ function editEventSheet(ev) {
     <div class="field"><span>Time</span><div class="seg" id="etm">${[['set', 'Set Time'], ['allday', 'All Day'], ['tbd', 'Time TBD']].map(([k, l]) => `<button data-m="${k}" class="${ev.time_mode === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>
     <label class="field ${ev.time_mode === 'set' && ev.state === 'locked' ? '' : 'hidden'}" id="etf"><span>Start Time</span><input class="input" type="time" id="ett" value="${ev.final_time || '17:00'}"></label>
     ${ev.state === 'locked' ? `<label class="field"><span>Date</span><input class="input" type="date" id="ed" value="${ev.final_date}"></label>` : ''}
+    <button class="toggle-row" id="ebr" style="width:100%;text-align:left;margin:0 0 14px"><div class="t">Bring List<small>Let people sign up to bring food or things</small></div><span class="sw ${ev.bring_list ? 'on' : ''}"></span></button>
     <div class="field"><span>Invited</span><div class="rows" id="einv">${S.people.map((p) => `<button class="prow ${inv.has(p.id) ? 'on' : ''}" data-p="${p.id}" ${p.id === ev.creator_id ? 'disabled' : ''}>${av(p.id)}<span class="n">${isMe(p.id) ? 'You' : esc(p.name)}${p.id === ev.creator_id ? '<small>Started it</small>' : ''}</span><span class="tick">${I.check}</span></button>`).join('')}</div></div>
     <div class="btnrow"><button class="btn primary block" data-s>Save Changes</button></div></div>`, { full: true });
-  let mode = ev.time_mode;
+  let mode = ev.time_mode, bring = !!ev.bring_list;
   $('[data-x]', sh).onclick = () => closeSheet();
+  $('#ebr', sh).onclick = () => { bring = !bring; $('#ebr .sw', sh).classList.toggle('on', bring); };
   $$('#etm button', sh).forEach((b) => (b.onclick = () => { mode = b.dataset.m; $$('#etm button', sh).forEach((x) => x.classList.toggle('on', x === b)); $('#etf', sh).classList.toggle('hidden', !(mode === 'set' && ev.state === 'locked')); }));
   $$('#einv .prow', sh).forEach((b) => (b.onclick = () => { if (b.disabled) return; b.classList.toggle('on'); inv[b.classList.contains('on') ? 'add' : 'delete'](b.dataset.p); }));
   $('[data-s]', sh).onclick = async () => {
-    const body = { id: ev.id, title: $('#et', sh).value, location: $('#el', sh).value, notes: $('#en', sh).value, time_mode: mode, invitees: [...inv] };
+    const body = { id: ev.id, title: $('#et', sh).value, location: $('#el', sh).value, notes: $('#en', sh).value, time_mode: mode, invitees: [...inv], bring_list: bring };
     if (ev.state === 'locked') { body.final_date = $('#ed', sh).value; if (mode === 'set') body.final_time = $('#ett', sh).value; }
     const r = await run(() => api('update_event', body));
     if (r) { closeSheet(); patchEvent(r.event); toast('Saved.'); render(); }
   };
+}
+
+/* ================= Flexible planning ================= */
+const canManageEv = (ev) => S.admin || ev.creator_id === S.me.id;
+const whoName = (id) => (isMe(id) ? 'You' : nameOf(id));
+const miniStack = (ids, max = 5) => ids.length ? `<span class="stack">${ids.slice(0, max).map((v) => av(v)).join('')}${ids.length > max ? `<span class="more">+${ids.length - max}</span>` : ''}</span>` : '';
+function changesPanel(ev) {
+  const list = changes(ev); if (!list.length) return '';
+  const manage = canManageEv(ev), me = S.me.id;
+  return `<div class="panel glass"><h2>Suggested Changes</h2>${list.map((p) => {
+    const mine = p.yes.includes(me) ? 'yes' : p.no.includes(me) ? 'no' : '';
+    return `<div class="prop"><div class="who">${av(p.added_by)}<span>${esc(whoName(p.added_by))} ${isMe(p.added_by) ? 'suggested' : 'suggests'}</span></div>
+      <div class="what">${esc(changeText(ev, p))}</div><div class="faint" style="font-size:14px">Right now: ${esc(whenText(ev))}</div>
+      ${p.reason ? `<div class="why">“${esc(p.reason)}”</div>` : ''}
+      <div class="tally"><span style="color:var(--going)">✓ ${p.yes.length} Works</span>${miniStack(p.yes)}<span style="color:var(--cant)">✕ ${p.no.length} Doesn’t</span>${miniStack(p.no)}</div>
+      ${invited(ev) ? `<div class="vote2"><button class="yes ${mine === 'yes' ? 'on' : ''}" data-pv="${p.id}" data-v="yes">✓ Works for Me</button><button class="no ${mine === 'no' ? 'on' : ''}" data-pv="${p.id}" data-v="no">✕ Doesn’t Work</button></div>` : ''}
+      ${manage ? `<div class="mgr"><button class="btn primary" data-pacc="${p.id}">Accept</button><button class="btn ghost" data-pdis="${p.id}">Dismiss</button></div>` : isMe(p.added_by) ? `<div class="mgr"><button class="btn ghost" data-pdis="${p.id}">Take It Back</button></div>` : ''}
+    </div>`; }).join('')}
+    ${manage ? '' : `<p class="faint" style="font-size:14px;margin:4px 2px 0">${esc(whoName(ev.creator_id))} decides. If it’s accepted, the event and everyone’s calendar update.</p>`}</div>`;
+}
+function timePollPanel(ev) {
+  const list = timePoll(ev).slice().sort((a, b) => b.yes.length - a.yes.length || a.time.localeCompare(b.time));
+  if (!list.length) return '';
+  const manage = canManageEv(ev), top = list[0].yes.length;
+  return `<div class="panel glass"><h2>What Time Works?</h2><p class="muted" style="margin:-6px 0 12px;font-size:15px">Tap every time you can make.</p><div class="opts">
+    ${list.map((p, i) => { const on = p.yes.includes(S.me.id); const best = i === 0 && top > 0 && (list.length < 2 || list[1].yes.length < top);
+      return `<div><button class="opt ${on ? 'on' : ''} ${best ? 'top' : ''}" data-tv="${p.id}"><div class="cal"><div class="m" style="background:var(--amber)">${fmtTime(p.time).split(' ')[1]}</div><div class="d" style="font-size:19px;padding:5px 0 6px">${fmtTime(p.time).split(' ')[0]}</div></div>
+        <div class="info">${best ? '<div class="best">Most Popular</div>' : ''}<b>${fmtTime(p.time)}</b><span>${p.yes.length ? `${p.yes.length} can make it` : 'No votes yet'}</span>${p.yes.length ? `<div class="stack" style="margin-top:6px">${p.yes.slice(0, 6).map((v) => av(v)).join('')}</div>` : ''}</div>
+        <span class="check">${on ? I.check : ''}</span></button>
+        ${manage ? `<div class="lockrow"><button class="btn ${best || list.length === 1 ? 'primary' : 'ghost'} block" data-pacc="${p.id}" style="min-height:48px;font-size:16px">${I.lock} Lock In This Time</button><button class="btn ghost" data-pdis="${p.id}" style="min-height:48px" aria-label="Remove">${I.close}</button></div>` : ''}</div>`; }).join('')}
+  </div>${invited(ev) ? `<button class="btn ghost block" data-addtime style="margin-top:12px">+ Add a Time</button>` : ''}</div>`;
+}
+function bringPanel(ev) {
+  const manage = canManageEv(ev);
+  const items = ev.bring || [];
+  return `<div class="panel glass bring"><h2>Bring List</h2>${items.length ? '' : '<p class="muted" style="margin:-6px 0 12px;font-size:15px">Nothing yet. Add what you’re bringing, or what’s still needed.</p>'}
+    ${items.map((it) => `<div class="item"><div class="l">${esc(it.label)}<small>${it.claimed_by ? `${esc(whoName(it.claimed_by))} ${isMe(it.claimed_by) ? 'are' : 'is'} bringing it` : 'Still needed'}</small></div>
+      ${!it.claimed_by ? `<button class="claim" data-bclaim="${it.id}" data-on="1">I’ll Bring It</button>` : isMe(it.claimed_by) ? `<button class="claim mine" data-bclaim="${it.id}" data-on="">✓ Yours</button>` : ''}
+      ${manage || isMe(it.added_by) ? `<button class="rm" data-brm="${it.id}" aria-label="Remove">${I.close}</button>` : ''}</div>`).join('')}
+    ${invited(ev) ? `<div class="addrow"><input class="input" id="bIn" maxlength="80" placeholder="Mashed potatoes, chairs…"></div><div class="btnrow" style="margin-top:8px"><button class="btn primary" id="bMine">I’ll Bring</button><button class="btn ghost" id="bNeed">We Need</button></div>` : ''}</div>`;
+}
+function flexPanel(ev) {
+  if (canManageEv(ev)) return timePoll(ev).length ? '' : `<div class="panel glass"><h2>Not Sure About the Time?</h2><p class="muted" style="margin:-6px 0 12px;font-size:15px">Offer a few times and let everyone vote.</p><button class="btn ghost block" data-tpoll-open>Let Everyone Vote on the Time</button></div>`;
+  return `<div class="panel glass"><h2>Need a Different Time?</h2><p class="muted" style="margin:-6px 0 12px;font-size:15px">Suggest a new date or time. Everyone can weigh in, and ${esc(whoName(ev.creator_id))} decides.</p><button class="btn ghost block" data-suggest>Suggest a Change</button></div>`;
+}
+function bindFlex(ev) {
+  const done = (r, msg) => { if (!r) return; patchEvent(r.event); renderDetails(r.event); if (msg) toast(msg); };
+  $$('[data-pv]').forEach((b) => (b.onclick = async () => {
+    const p = changes(ev).find((x) => x.id === b.dataset.pv); const cur = p.yes.includes(S.me.id) ? 'yes' : p.no.includes(S.me.id) ? 'no' : null;
+    const v = cur === b.dataset.v ? null : b.dataset.v; b.classList.add('pop');
+    done(await run(() => api('prop_vote', { id: p.id, vote: v })), v ? (v === 'yes' ? 'Saved: works for you' : 'Saved: doesn’t work for you') : 'Vote cleared.');
+  }));
+  $$('[data-tv]').forEach((b) => (b.onclick = async () => {
+    const p = timePoll(ev).find((x) => x.id === b.dataset.tv); const on = !p.yes.includes(S.me.id);
+    b.classList.toggle('on', on); $('.check', b).innerHTML = on ? I.check : '';
+    done(await run(() => api('prop_vote', { id: p.id, vote: on ? 'yes' : null })), on ? `Saved: ${fmtTime(p.time)} works` : 'Saved: removed that time');
+  }));
+  $$('[data-pacc]').forEach((b) => (b.onclick = async () => {
+    const p = ev.proposals.find((x) => x.id === b.dataset.pacc);
+    const what = p.kind === 'time' ? fmtTime(p.time) : changeText(ev, p);
+    if (!(await confirmSheet(p.kind === 'time' ? 'Lock In This Time?' : 'Accept This Change?', p.kind === 'time' ? `${what} becomes the time. Calendars update too.` : `The event moves to ${what}. Calendars update, and anyone who said they can’t make it gets asked again.`, p.kind === 'time' ? 'Lock It In' : 'Accept'))) return;
+    const r = await run(() => api('prop_accept', { id: p.id }));
+    if (r) { patchEvent(r.event); burst($('.hero')); toast(p.kind === 'time' ? 'Time locked in!' : 'Event updated!'); renderEvent($('#app'), ev.id); }
+  }));
+  $$('[data-pdis]').forEach((b) => (b.onclick = async () => {
+    const p = ev.proposals.find((x) => x.id === b.dataset.pdis);
+    const own = isMe(p.added_by) && !canManageEv(ev);
+    if (!(await confirmSheet(own ? 'Take Back Your Suggestion?' : p.kind === 'time' ? 'Remove This Time?' : 'Dismiss This Suggestion?', own ? 'It goes away for everyone.' : 'Votes on it go away too.', own ? 'Take It Back' : 'Remove', true))) return;
+    done(await run(() => api('prop_dismiss', { id: p.id })), own ? 'Suggestion taken back.' : 'Removed.');
+  }));
+  const at = $('[data-addtime]'); if (at) at.onclick = () => addTimeSheet(ev, false);
+  const tpo = $('[data-tpoll-open]'); if (tpo) tpo.onclick = () => addTimeSheet(ev, true);
+  const sg = $('[data-suggest]'); if (sg) sg.onclick = () => suggestSheet(ev);
+  $$('[data-bclaim]').forEach((b) => (b.onclick = async () => done(await run(() => api('bring_claim', { id: b.dataset.bclaim, on: !!b.dataset.on })), b.dataset.on ? 'Saved: you’re bringing it' : 'Saved: you’re not bringing it')));
+  $$('[data-brm]').forEach((b) => (b.onclick = async () => done(await run(() => api('bring_remove', { id: b.dataset.brm })), 'Removed.')));
+  const add = async (claim) => { const v = $('#bIn').value.trim(); if (!v) { toast('Type what it is first.'); $('#bIn').focus(); return; } done(await run(() => api('bring_add', { event_id: ev.id, label: v, claim })), claim ? 'Saved: you’re bringing it' : 'Added to the list.'); };
+  const bm = $('#bMine'); if (bm) bm.onclick = () => add(true);
+  const bn = $('#bNeed'); if (bn) bn.onclick = () => add(false);
+}
+function addTimeSheet(ev, starting) {
+  closeSheet(true);
+  const first = starting && !timePoll(ev).length && ev.time_mode === 'set' && ev.final_time;
+  const sh = openSheet(`<h2>${starting ? 'Let Everyone Vote' : 'Add a Time'}</h2><p class="sub">${starting ? (first ? `${fmtTime(ev.final_time)} stays as an option. Add another time people can pick.` : 'Add a time people can pick. Add more after.') : 'Everyone can vote on it.'}</p>
+    <label class="field"><span>Time</span><input class="input" type="time" id="atT" value="${first ? (Number(ev.final_time.slice(0, 2)) < 23 ? pad2(Number(ev.final_time.slice(0, 2)) + 1) + ev.final_time.slice(2) : '18:00') : '18:00'}"></label>
+    <div class="btnrow"><button class="btn ghost" data-c>Cancel</button><button class="btn primary" data-s>Add Time</button></div>`);
+  $('[data-c]', sh).onclick = () => closeSheet();
+  $('[data-s]', sh).onclick = async () => {
+    const t = $('#atT', sh).value; if (!t) return toast('Pick a time.');
+    if (first) { try { await api('prop_add', { event_id: ev.id, kind: 'time', time: ev.final_time }); } catch (e) { if (e.message !== 'option_exists') { toast(errText(e)); return; } } }
+    const r = await run(() => api('prop_add', { event_id: ev.id, kind: 'time', time: t }));
+    if (r) { closeSheet(); patchEvent(r.event); renderDetails(r.event); toast('Time added. Everyone can vote now.'); }
+  };
+}
+function suggestSheet(ev) {
+  closeSheet(true);
+  let mode = ev.time_mode === 'tbd' ? 'set' : ev.time_mode;
+  const sh = openSheet(`<h2>Suggest a Change</h2><p class="sub">Right now: ${esc(whenText(ev))}</p>
+    <label class="field"><span>Date</span><input class="input" type="date" id="sgD" value="${ev.final_date}" min="${today()}"></label>
+    <div class="field"><span>Time</span><div class="seg" id="sgM">${[['set', 'Set Time'], ['allday', 'All Day'], ['tbd', 'TBD']].map(([k, l]) => `<button data-m="${k}" class="${mode === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>
+    <label class="field ${mode === 'set' ? '' : 'hidden'}" id="sgTf"><span>Start Time</span><input class="input" type="time" id="sgT" value="${ev.final_time || '17:00'}"></label>
+    <label class="field"><span>Why? (Optional)</span><input class="input" id="sgR" maxlength="200" placeholder="I work till 4:30"></label>
+    <div class="btnrow"><button class="btn ghost" data-c>Cancel</button><button class="btn primary" data-s>Suggest It</button></div>`);
+  $$('#sgM button', sh).forEach((b) => (b.onclick = () => { mode = b.dataset.m; $$('#sgM button', sh).forEach((x) => x.classList.toggle('on', x === b)); $('#sgTf', sh).classList.toggle('hidden', mode !== 'set'); }));
+  $('[data-c]', sh).onclick = () => closeSheet();
+  $('[data-s]', sh).onclick = async () => {
+    const r = await run(() => api('prop_add', { event_id: ev.id, kind: 'change', day: $('#sgD', sh).value, time_mode: mode, time: mode === 'set' ? $('#sgT', sh).value : null, reason: $('#sgR', sh).value }));
+    if (r) { closeSheet(); patchEvent(r.event); renderDetails(r.event); toast('Suggestion sent! Everyone can weigh in.'); }
+  };
+}
+const cantWillAsk = (ev) => !isPast(ev) && !(ev.state === 'locked' && canManageEv(ev));
+function cantSheet(ev) {
+  if (!cantWillAsk(ev) || $('.sheet')) return;
+  const locked = ev.state === 'locked';
+  const sh = openSheet(`<h2>Sorry You Can’t Make It</h2><p class="faint" style="text-align:center;margin:-2px 0 8px;font-weight:700">Saved your answer.</p><p class="sub">${locked ? 'Would a different date or time work? Suggest one and everyone can weigh in.' : 'Is there a date that would work for you? Add it and everyone can vote.'}</p>
+    <div class="btnrow" style="flex-direction:column"><button class="btn primary block" data-y>${locked ? 'Suggest a Different Time' : 'Add a Date That Works'}</button><button class="btn ghost block" data-n>No Thanks</button></div>`);
+  $('[data-n]', sh).onclick = () => closeSheet();
+  $('[data-y]', sh).onclick = () => { closeSheet(true); locked ? suggestSheet(ev) : addOptionSheet(ev); };
 }
 
 /* ================= Chat ================= */
@@ -939,6 +1108,7 @@ function paintChat(ev, jump) {
   for (const m of c.msgs) {
     const d = new Date(m.created_at); const dk = ymd(d);
     if (dk !== lastDay) { html += `<div class="daysep">${dk === today() ? 'Today' : fmtDay(dk)}</div>`; lastDay = dk; lastWho = ''; }
+    if (m.kind === 'system') { if (!m.deleted) html += `<div class="sysline">${isMe(m.person_id) ? 'You' : esc(nameOf(m.person_id))} ${esc(m.body)}</div>`; lastWho = ''; continue; }
     const mine = isMe(m.person_id);
     const t = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     html += `<div class="msg ${mine ? 'mine' : ''}" data-mid="${m.id}" data-who="${esc(m.person_id)}">${!mine ? (lastWho !== m.person_id ? av(m.person_id) : '<span style="width:36px;flex:none"></span>') : ''}<div>${!mine && lastWho !== m.person_id ? `<div class="who">${esc(nameOf(m.person_id))}</div>` : ''}<div class="bub ${m.deleted ? 'gone' : ''}" title="${t}">${m.deleted ? 'Message deleted' : esc(m.body)}</div></div></div>`;
@@ -957,7 +1127,7 @@ async function msgMenu(ev, m) {
 
 /* ================= New event ================= */
 function newEventFlow() {
-  S.newEv = { step: 0, kind: null, preset_key: null, subject_id: null, title: '', location: '', notes: '', time_mode: 'set', time: '17:00', date_mode: 'set', day: '', options: [], invitees: new Set(S.people.map((p) => p.id)) };
+  S.newEv = { step: 0, kind: null, preset_key: null, subject_id: null, title: '', location: '', notes: '', time_mode: 'set', time: '17:00', pollTimes: ['16:00', '17:00', '18:00'], bring: false, date_mode: 'set', day: '', options: [], invitees: new Set(S.people.map((p) => p.id)) };
   const sh = openSheet('<div class="inner" id="nev"></div>', { full: true });
   paintNew(sh);
 }
@@ -976,8 +1146,12 @@ function paintNew(sh) {
     body = `<label class="field"><span>Name</span><input class="input" id="nt" value="${esc(n.title)}" maxlength="80" placeholder="Sunday Dinner"></label>
       <label class="field"><span>Where</span><input class="input" id="nl" value="${esc(n.location)}" maxlength="160" placeholder="Dad’s house"></label>
       <label class="field"><span>Notes (Optional)</span><textarea class="input" id="nn" maxlength="1000" placeholder="Bring a dish to pass!">${esc(n.notes)}</textarea></label>
-      <div class="field"><span>Time</span><div class="seg" id="tm">${[['set', 'Set Time'], ['allday', 'All Day'], ['tbd', 'Time TBD']].map(([k, l]) => `<button data-m="${k}" class="${n.time_mode === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>
+      <div class="field"><span>Time</span><div class="seg" id="tm">${[['set', 'Set Time'], ['poll', 'Let’s Vote'], ['allday', 'All Day'], ['tbd', 'TBD']].map(([k, l]) => `<button data-m="${k}" class="${n.time_mode === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>
       <label class="field ${n.time_mode === 'set' ? '' : 'hidden'}" id="tf"><span>Start Time</span><input class="input" type="time" id="ntt" value="${n.time}"></label>
+      <div class="field ${n.time_mode === 'poll' ? '' : 'hidden'}" id="tpf"><span>Times to Vote On</span><p class="faint" style="margin:-2px 4px 10px;font-size:14px">Everyone taps the times that work. You lock one in.</p>
+        <div id="tpl">${n.pollTimes.map((t, i) => `<div class="optedit"><input class="input" type="time" data-pt="${i}" value="${t}">${n.pollTimes.length > 2 ? `<button class="x" data-prm="${i}" aria-label="Remove">×</button>` : ''}</div>`).join('')}</div>
+        ${n.pollTimes.length < 4 ? '<button class="btn ghost block" id="addpt">+ Add Another Time</button>' : ''}</div>
+      <button class="toggle-row" id="nbr" style="width:100%;text-align:left;margin-bottom:6px"><div class="t">Bring List<small>Let people sign up to bring food or things</small></div><span class="sw ${n.bring ? 'on' : ''}"></span></button>
       <div class="btnrow"><button class="btn primary block" data-next>Next</button></div>`;
   } else if (n.step === 2) {
     body = `<div class="seg" id="dm"><button data-d="set" class="${n.date_mode === 'set' ? 'on' : ''}">Set Date</button><button data-d="options" class="${n.date_mode === 'options' ? 'on' : ''}">Offer Options</button></div>
@@ -994,7 +1168,7 @@ function paintNew(sh) {
     const w = leadWarning(n);
     const a = n.kind === 'holiday' ? holiday(n.preset_key) : n.kind === 'birthday' ? BDAY : CUSTOM;
     const dateLine = n.date_mode === 'set' ? fmtDay(n.day, true) : `${n.options.length} options: ${n.options.map((o) => fmtDay(o.day)).join(', ')}`;
-    const timeLine = n.time_mode === 'set' ? (n.date_mode === 'set' ? fmtTime(n.time) : 'Times set per option') : n.time_mode === 'allday' ? 'All Day' : 'Time TBD';
+    const timeLine = n.time_mode === 'set' ? (n.date_mode === 'set' ? fmtTime(n.time) : 'Times set per option') : n.time_mode === 'poll' ? `Everyone votes: ${n.pollTimes.map(fmtTime).join(', ')}` : n.time_mode === 'allday' ? 'All Day' : 'Time TBD';
     body = `<div class="summary glass">${artHTML(a)}<div class="body"><h3 style="font-size:22px">${esc(n.title)}</h3><div>${I.cal} ${esc(dateLine)}</div><div class="muted">${esc(timeLine)}</div>${n.location ? `<div>${I.pin} ${esc(n.location)}</div>` : ''}<div>${I.user} ${n.invitees.size} invited</div></div></div>
       ${w ? `<div class="warn"><b>Heads Up 👋</b>${esc(w.text)}</div><div class="btnrow" style="flex-direction:column"><button class="btn primary block" id="later">Add a Later Date</button><button class="btn ghost block" data-create>Create Anyway</button></div>` : '<div class="btnrow"><button class="btn primary block" data-create>Create Event</button></div>'}`;
   }
@@ -1008,7 +1182,12 @@ function paintNew(sh) {
     $$('[data-b]', el).forEach((b) => (b.onclick = () => { const p = person(b.dataset.b); pickType(sh, { kind: 'birthday', preset_key: 'birthday', subject_id: p.id, title: `${p.name}’s Birthday`, day: nextBirthday(p) }); }));
     $('[data-c]', el).onclick = () => pickType(sh, { kind: 'custom', preset_key: null, title: '', day: addDays(today(), S.defaultLead) });
   }
-  if (n.step === 1) $$('#tm button', el).forEach((b) => (b.onclick = () => { n.time_mode = b.dataset.m; $$('#tm button', el).forEach((x) => x.classList.toggle('on', x === b)); $('#tf', el).classList.toggle('hidden', n.time_mode !== 'set'); }));
+  if (n.step === 1) {
+    $$('#tm button', el).forEach((b) => (b.onclick = () => { n.time_mode = b.dataset.m; $$('#tm button', el).forEach((x) => x.classList.toggle('on', x === b)); $('#tf', el).classList.toggle('hidden', n.time_mode !== 'set'); $('#tpf', el).classList.toggle('hidden', n.time_mode !== 'poll'); }));
+    $('#nbr', el).onclick = () => { n.bring = !n.bring; $('#nbr .sw', el).classList.toggle('on', n.bring); };
+    $$('[data-prm]', el).forEach((b) => (b.onclick = () => { saveStep(sh); n.pollTimes.splice(Number(b.dataset.prm), 1); paintNew(sh); }));
+    const ap = $('#addpt', el); if (ap) ap.onclick = () => { saveStep(sh); const last = n.pollTimes.filter(Boolean).sort().pop() || '17:00'; let h = Number(last.split(':')[0]) + 1, m = last.split(':')[1] || '00'; if (h > 23) { h = 23; m = '30'; } let t = `${pad2(h)}:${m}`; if (n.pollTimes.includes(t)) t = ''; n.pollTimes.push(t); paintNew(sh); };
+  }
   if (n.step === 2) {
     $$('#dm button', el).forEach((b) => (b.onclick = () => { saveStep(sh); n.date_mode = b.dataset.d; if (n.date_mode === 'options' && n.options.length < 2) seedOptions(n); paintNew(sh); }));
     $$('[data-rm]', el).forEach((b) => (b.onclick = () => { saveStep(sh); n.options.splice(Number(b.dataset.rm), 1); paintNew(sh); }));
@@ -1034,6 +1213,8 @@ function saveStep(sh, validate) {
   const n = S.newEv;
   if (n.step === 1) {
     n.title = $('#nt', sh).value.trim(); n.location = $('#nl', sh).value.trim(); n.notes = $('#nn', sh).value.trim(); n.time = $('#ntt', sh).value || n.time;
+    $$('[data-pt]', sh).forEach((i) => (n.pollTimes[Number(i.dataset.pt)] = i.value));
+    if (validate && n.time_mode === 'poll') { const t = n.pollTimes.filter(Boolean); if (t.length < 2) { toast('Offer at least 2 times.'); return false; } if (new Set(t).size < t.length) { toast('Two of the times are the same.'); return false; } n.pollTimes = t; }
     if (validate && !n.title) { toast('Give it a name first.'); $('#nt', sh).focus(); return false; }
     if (validate && n.time_mode === 'set' && !n.time) { toast('Pick a time.'); return false; }
   }
@@ -1076,8 +1257,10 @@ function addLaterDate(n) {
 }
 async function createEvent(sh) {
   const n = S.newEv; const btn = $('[data-create]', sh); btn.disabled = true;
-  const body = { title: n.title, kind: n.kind, preset_key: n.preset_key, subject_id: n.subject_id, location: n.location, notes: n.notes, time_mode: n.time_mode, date_mode: n.date_mode, invitees: [...n.invitees] };
-  if (n.date_mode === 'set') { body.day = n.day; body.time = n.time; } else body.options = n.options.map((o) => ({ day: o.day, time: n.time_mode === 'set' ? o.time || n.time : null }));
+  const tm = n.time_mode === 'poll' ? 'tbd' : n.time_mode;
+  const body = { title: n.title, kind: n.kind, preset_key: n.preset_key, subject_id: n.subject_id, location: n.location, notes: n.notes, time_mode: tm, date_mode: n.date_mode, invitees: [...n.invitees], bring_list: n.bring };
+  if (n.time_mode === 'poll') body.poll_times = n.pollTimes;
+  if (n.date_mode === 'set') { body.day = n.day; body.time = n.time; } else body.options = n.options.map((o) => ({ day: o.day, time: tm === 'set' ? o.time || n.time : null }));
   const r = await run(() => api('create_event', body));
   btn.disabled = false;
   if (!r) return;

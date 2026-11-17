@@ -55,7 +55,7 @@ module.exports = async (req, res) => {
     const cant = new Set(mine.filter((r) => r.answer === 'cant').map((r) => r.event_id));
     const now = stamp(new Date().toISOString());
     const L = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Huddle//Family Events//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
-      'X-WR-CALNAME:Huddle', `X-WR-TIMEZONE:${TZ}`, 'X-WR-CALDESC:Family get-togethers from Huddle', 'REFRESH-INTERVAL;VALUE=DURATION:PT1H', 'X-PUBLISHED-TTL:PT1H', ...VTIMEZONE];
+      'X-WR-CALNAME:Family Huddle', `X-WR-TIMEZONE:${TZ}`, 'X-WR-CALDESC:Family get-togethers from Huddle', 'REFRESH-INTERVAL;VALUE=DURATION:PT1H', 'X-PUBLISHED-TTL:PT1H', ...VTIMEZONE];
     for (const e of events) {
       if (cant.has(e.id) || !e.final_date) continue;
       const day = String(e.final_date).slice(0, 10);

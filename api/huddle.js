@@ -16,7 +16,7 @@ const PID_RE = /^[a-z0-9-]{1,40}$/;
 const MAX_FAILS = 5, LOCK_MIN = 15;
 
 const PEOPLE_COLS = 'id,name,bday_month,bday_day,has_account,is_admin,pin_hash,pin_fails,pin_locked_until,lead_time_days,partner_id,sort,removed,cal_token';
-const EVENT_COLS = 'id,title,kind,preset_key,subject_id,state,final_date,final_time,time_mode,location,notes,creator_id,created_at,updated_at';
+const EVENT_COLS = 'id,title,kind,preset_key,subject_id,state,final_date,final_time,time_mode,location,notes,creator_id,created_at,updated_at,bring_list';
 
 // No actions below read anything before the version check; reads are allowed on an old version
 const READS = new Set(['roster', 'boot', 'chat_list', 'avatar_get', 'admin_check', 'admin_data', 'ping']);
@@ -81,12 +81,16 @@ async function eventBundle(events) {
   if (!events.length) return [];
   const ids = events.map((e) => e.id);
   const list = inList(ids);
-  const [inv, rsvps, opts, msgs] = await Promise.all([
+  const [inv, rsvps, opts, msgs, props, bring] = await Promise.all([
     sb(`huddle_invites?event_id=in.${list}&select=event_id,person_id`),
     sb(`huddle_rsvps?event_id=in.${list}&select=event_id,person_id,answer,answered_by,bringing,updated_at`),
     sb(`huddle_date_options?event_id=in.${list}&select=id,event_id,day,time,added_by,created_at&order=day.asc,time.asc`),
     sb(`huddle_messages?event_id=in.${list}&deleted=eq.false&select=event_id,id,created_at,person_id&order=id.asc`),
+    sb(`huddle_proposals?event_id=in.${list}&status=eq.open&select=id,event_id,kind,day,time,time_mode,reason,added_by,created_at&order=created_at.asc`),
+    sb(`huddle_bring_items?event_id=in.${list}&select=id,event_id,label,added_by,claimed_by,created_at&order=created_at.asc`),
   ]);
+  const propIds = (props || []).map((x) => x.id);
+  const pvotes = propIds.length ? await sb(`huddle_proposal_votes?proposal_id=in.${inList(propIds)}&select=proposal_id,person_id,vote`) : [];
   const optIds = (opts || []).map((o) => o.id);
   const votes = optIds.length ? await sb(`huddle_votes?option_id=in.${inList(optIds)}&select=option_id,person_id`) : [];
   return events.map((e) => {
@@ -100,7 +104,13 @@ async function eventBundle(events) {
     return {
       ...e, final_time: e.final_time ? String(e.final_time).slice(0, 5) : null,
       invitees: (inv || []).filter((x) => x.event_id === e.id).map((x) => x.person_id),
-      rsvps: r, options: o, msg_count: m.length, last_msg_id: m.length ? m[m.length - 1].id : 0,
+      rsvps: r, options: o, msg_count: m.length,
+      proposals: (props || []).filter((x) => x.event_id === e.id).map((x) => ({
+        id: x.id, kind: x.kind, day: x.day, time: x.time ? String(x.time).slice(0, 5) : null, time_mode: x.time_mode, reason: x.reason, added_by: x.added_by,
+        yes: (pvotes || []).filter((v) => v.proposal_id === x.id && v.vote === 'yes').map((v) => v.person_id),
+        no: (pvotes || []).filter((v) => v.proposal_id === x.id && v.vote === 'no').map((v) => v.person_id),
+      })),
+      bring: (bring || []).filter((x) => x.event_id === e.id).map(({ event_id, ...x }) => x), last_msg_id: m.length ? m[m.length - 1].id : 0,
       last_msg_at: m.length ? m[m.length - 1].created_at : null,
     };
   });
@@ -143,6 +153,27 @@ async function applyBringing(ev, me, on) {
   if (theirs && theirs.answered_by === me.partner_id) return;
   if (on) await upsertRsvp(ev.id, me.partner_id, 'going', me.id, false);
   else if (theirs && theirs.answered_by === me.id) await sb(`huddle_rsvps?event_id=eq.${ev.id}&person_id=eq.${q(me.partner_id)}`, { method: 'DELETE' });
+}
+
+// ---------- proposals ----------
+async function systemLine(eventId, personId, body) {
+  await sb('huddle_messages', { method: 'POST', body: [{ event_id: eventId, person_id: personId, body: clean(body, 400), kind: 'system', created_at: nowIso() }] });
+}
+async function getProposal(id) {
+  const rows = await sb(`huddle_proposals?id=eq.${eid(id)}&select=id,event_id,kind,day,time,time_mode,reason,added_by,status`);
+  if (!rows || !rows.length) fail(404, 'proposal_not_found');
+  return rows[0];
+}
+const t5 = (t) => (t ? String(t).slice(0, 5) : null);
+function fmtTimeS(t) { if (!t) return ''; let [h, m] = t.split(':').map(Number); const ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12; return `${h}:${String(m).padStart(2, '0')} ${ap}`; }
+function fmtDayS(d) { const x = new Date(d + 'T12:00:00Z'); return x.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }); }
+function describeChange(p) {
+  const parts = [];
+  if (p.day) parts.push(fmtDayS(p.day));
+  if (p.time_mode === 'set' && p.time) parts.push(fmtTimeS(t5(p.time)));
+  else if (p.time_mode === 'allday') parts.push('All Day');
+  else if (p.time_mode === 'tbd') parts.push('Time TBD');
+  return parts.join(' at ');
 }
 
 // ---------- handlers ----------
@@ -267,7 +298,8 @@ const handlers = {
     const rows = await sb(`huddle_date_options?id=eq.${eid(b.option_id)}&event_id=eq.${ev.id}&select=day,time`);
     if (!rows || !rows.length) fail(404, 'option_not_found');
     const t = rows[0].time ? String(rows[0].time).slice(0, 5) : null;
-    const body = { state: 'locked', final_date: rows[0].day, final_time: t, updated_at: nowIso() };
+    const keep = ev.final_time ? String(ev.final_time).slice(0, 5) : null;
+    const body = { state: 'locked', final_date: rows[0].day, final_time: t || keep, updated_at: nowIso() };
     if (t && ev.time_mode !== 'set') body.time_mode = 'set';
     await sb(`huddle_events?id=eq.${ev.id}`, { method: 'PATCH', body });
     return { event: (await eventBundle([await getEvent(ev.id)]))[0] };
@@ -313,7 +345,7 @@ const handlers = {
     const subject_id = kind === 'birthday' && b.subject_id && valid.has(b.subject_id) ? b.subject_id : null;
     const ins = await sb('huddle_events', {
       method: 'POST', prefer: 'return=representation',
-      body: [{ title, kind, preset_key: clean(b.preset_key, 40) || null, subject_id, state, final_date, final_time, time_mode,
+      body: [{ title, kind, preset_key: clean(b.preset_key, 40) || null, subject_id, state, final_date, final_time, time_mode, bring_list: !!b.bring_list,
         location: clean(b.location, 160) || null, notes: clean(b.notes, 1000) || null, creator_id: me.id, created_at: nowIso(), updated_at: nowIso() }],
     });
     const ev = ins[0];
@@ -323,6 +355,13 @@ const handlers = {
       await sb('huddle_votes', { method: 'POST', body: os.map((o) => ({ option_id: o.id, person_id: me.id })) });
     }
     await upsertRsvp(ev.id, me.id, 'going', me.id, false);
+    // "Let Everyone Vote" on the time: event starts Time TBD with 2–4 time options
+    if (time_mode === 'tbd' && Array.isArray(b.poll_times) && b.poll_times.length) {
+      const times = [...new Set(b.poll_times.map(timeOrNull).filter(Boolean))];
+      if (times.length < 2 || times.length > 6) fail(400, 'need_2_to_6_times');
+      const ps = await sb('huddle_proposals', { method: 'POST', prefer: 'return=representation', body: times.map((t) => ({ event_id: ev.id, kind: 'time', time: t, added_by: me.id })) });
+      await sb('huddle_proposal_votes', { method: 'POST', body: ps.map((p) => ({ proposal_id: p.id, person_id: me.id, vote: 'yes' })) });
+    }
     return { event: (await eventBundle([ev]))[0] };
   },
 
@@ -333,6 +372,7 @@ const handlers = {
     if (b.title !== undefined) { body.title = clean(b.title, 80); if (!body.title) fail(400, 'title_required'); }
     if (b.location !== undefined) body.location = clean(b.location, 160) || null;
     if (b.notes !== undefined) body.notes = clean(b.notes, 1000) || null;
+    if (b.bring_list !== undefined) body.bring_list = !!b.bring_list;
     if (b.time_mode !== undefined) body.time_mode = oneOf(b.time_mode, TIME_MODES, 'bad_time_mode');
     const mode = body.time_mode || ev.time_mode;
     if (ev.state === 'locked') {
@@ -365,10 +405,111 @@ const handlers = {
     return { ok: true };
   },
 
+  // kind 'time': add a time to the time poll. kind 'change': suggest a new date and/or time for a locked event.
+  async prop_add(b, ctx) {
+    const ev = await seeOrFail(b.event_id, ctx);
+    const kind = oneOf(b.kind, ['time', 'change'], 'bad_kind');
+    const open = (await sb(`huddle_proposals?event_id=eq.${ev.id}&status=eq.open&select=id,kind,day,time,time_mode,added_by`)) || [];
+    const reason = clean(b.reason, 200) || null;
+    let row;
+    if (kind === 'time') {
+      const t = timeOrNull(b.time) || fail(400, 'time_required');
+      if (open.filter((x) => x.kind === 'time').length >= 8) fail(400, 'too_many_options');
+      if (open.some((x) => x.kind === 'time' && t5(x.time) === t)) fail(409, 'option_exists');
+      row = { event_id: ev.id, kind, time: t, reason, added_by: ctx.me.id };
+    } else {
+      if (ev.state !== 'locked') fail(409, 'not_locked');
+      const d = b.day ? day(b.day) : null;
+      const mode = b.time_mode ? oneOf(b.time_mode, TIME_MODES, 'bad_time_mode') : null;
+      const t = mode === 'set' ? (timeOrNull(b.time) || fail(400, 'time_required')) : null;
+      const sameDay = !d || d === String(ev.final_date).slice(0, 10);
+      const sameTime = !mode || (mode === ev.time_mode && (mode !== 'set' || t === t5(ev.final_time)));
+      if (sameDay && sameTime) fail(400, 'no_change');
+      if (open.filter((x) => x.kind === 'change' && x.added_by === ctx.me.id).length >= 3) fail(400, 'too_many_suggestions');
+      row = { event_id: ev.id, kind, day: sameDay ? null : d, time: t, time_mode: sameTime ? null : mode, reason, added_by: ctx.me.id };
+    }
+    const ins = await sb('huddle_proposals', { method: 'POST', prefer: 'return=representation', body: [row] });
+    await sb('huddle_proposal_votes', { method: 'POST', body: [{ proposal_id: ins[0].id, person_id: ctx.me.id, vote: 'yes' }] });
+    if (kind === 'change') await systemLine(ev.id, ctx.me.id, `suggested moving it to ${describeChange(ins[0])}${reason ? ` (“${reason}”)` : ''}`);
+    return { event: (await eventBundle([ev]))[0] };
+  },
+
+  async prop_vote(b, ctx) {
+    const p = await getProposal(b.id);
+    const ev = await seeOrFail(p.event_id, ctx);
+    if (p.status !== 'open') fail(409, 'proposal_closed');
+    await sb(`huddle_proposal_votes?proposal_id=eq.${p.id}&person_id=eq.${q(ctx.me.id)}`, { method: 'DELETE' });
+    if (b.vote) await sb('huddle_proposal_votes', { method: 'POST', body: [{ proposal_id: p.id, person_id: ctx.me.id, vote: oneOf(b.vote, ['yes', 'no'], 'bad_vote') }] });
+    return { event: (await eventBundle([ev]))[0] };
+  },
+
+  // Creator/admin picks it. A time → that's the time. A change → the event moves; people who said Can't Make It get asked again.
+  async prop_accept(b, ctx) {
+    const p = await getProposal(b.id);
+    const ev = await seeOrFail(p.event_id, ctx);
+    if (!canManage(ev, ctx)) fail(403, 'not_allowed');
+    if (p.status !== 'open') fail(409, 'proposal_closed');
+    const now = nowIso();
+    const body = { updated_at: now };
+    let line;
+    if (p.kind === 'time') {
+      body.final_time = t5(p.time); body.time_mode = 'set';
+      await sb(`huddle_proposals?event_id=eq.${ev.id}&kind=eq.time&status=eq.open&id=neq.${p.id}`, { method: 'PATCH', body: { status: 'dismissed', resolved_by: ctx.me.id, resolved_at: now } });
+      line = `locked in ${fmtTimeS(t5(p.time))} as the time`;
+    } else {
+      if (p.day) body.final_date = p.day;
+      if (p.time_mode) { body.time_mode = p.time_mode; body.final_time = p.time_mode === 'set' ? t5(p.time) : null; }
+      await sb(`huddle_rsvps?event_id=eq.${ev.id}&answer=eq.cant`, { method: 'DELETE' });
+      line = `moved it to ${describeChange({ day: p.day || ev.final_date, time: body.final_time !== undefined ? body.final_time : ev.final_time, time_mode: body.time_mode || ev.time_mode })}`;
+    }
+    await sb(`huddle_events?id=eq.${ev.id}`, { method: 'PATCH', body });
+    await sb(`huddle_proposals?id=eq.${p.id}`, { method: 'PATCH', body: { status: 'accepted', resolved_by: ctx.me.id, resolved_at: now } });
+    await systemLine(ev.id, ctx.me.id, line);
+    return { event: (await eventBundle([await getEvent(ev.id)]))[0] };
+  },
+
+  // Creator/admin dismisses; the person who suggested it can take it back
+  async prop_dismiss(b, ctx) {
+    const p = await getProposal(b.id);
+    const ev = await seeOrFail(p.event_id, ctx);
+    if (!canManage(ev, ctx) && p.added_by !== ctx.me.id) fail(403, 'not_allowed');
+    await sb(`huddle_proposals?id=eq.${p.id}`, { method: 'PATCH', body: { status: 'dismissed', resolved_by: ctx.me.id, resolved_at: nowIso() } });
+    return { event: (await eventBundle([ev]))[0] };
+  },
+
+  // Bring list (only when the event has it turned on)
+  async bring_add(b, ctx) {
+    const ev = await seeOrFail(b.event_id, ctx);
+    if (!ev.bring_list) fail(409, 'bring_off');
+    const label = clean(b.label, 80);
+    if (!label) fail(400, 'empty');
+    const n = (await sb(`huddle_bring_items?event_id=eq.${ev.id}&select=id`)) || [];
+    if (n.length >= 60) fail(400, 'too_many_items');
+    await sb('huddle_bring_items', { method: 'POST', body: [{ event_id: ev.id, label, added_by: ctx.me.id, claimed_by: b.claim ? ctx.me.id : null }] });
+    return { event: (await eventBundle([ev]))[0] };
+  },
+  async bring_claim(b, ctx) {
+    const rows = await sb(`huddle_bring_items?id=eq.${eid(b.id)}&select=id,event_id,claimed_by`);
+    if (!rows || !rows.length) fail(404, 'item_not_found');
+    const ev = await seeOrFail(rows[0].event_id, ctx);
+    if (b.on && rows[0].claimed_by && rows[0].claimed_by !== ctx.me.id) fail(409, 'already_claimed_item');
+    if (!b.on && rows[0].claimed_by !== ctx.me.id && !ctx.admin) fail(403, 'not_allowed');
+    await sb(`huddle_bring_items?id=eq.${b.id}`, { method: 'PATCH', body: { claimed_by: b.on ? ctx.me.id : null } });
+    return { event: (await eventBundle([ev]))[0] };
+  },
+  async bring_remove(b, ctx) {
+    const rows = await sb(`huddle_bring_items?id=eq.${eid(b.id)}&select=id,event_id,added_by`);
+    if (!rows || !rows.length) fail(404, 'item_not_found');
+    const ev = await seeOrFail(rows[0].event_id, ctx);
+    if (!canManage(ev, ctx) && rows[0].added_by !== ctx.me.id) fail(403, 'not_allowed');
+    await sb(`huddle_bring_items?id=eq.${b.id}`, { method: 'DELETE' });
+    return { event: (await eventBundle([ev]))[0] };
+  },
+
   async chat_list(b, ctx) {
     const ev = await seeOrFail(b.event_id, ctx);
     const after = Math.max(0, Number(b.after) || 0);
-    const rows = await sb(`huddle_messages?event_id=eq.${ev.id}&id=gt.${after}&select=id,person_id,body,photo_path,created_at,deleted&order=id.asc&limit=300`);
+    const rows = await sb(`huddle_messages?event_id=eq.${ev.id}&id=gt.${after}&select=id,person_id,body,photo_path,created_at,deleted,kind&order=id.asc&limit=300`);
     return { messages: (rows || []).map((m) => (m.deleted ? { id: m.id, person_id: m.person_id, created_at: m.created_at, deleted: true } : m)) };
   },
 
